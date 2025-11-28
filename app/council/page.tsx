@@ -34,6 +34,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { MessageResponse } from "@/components/ai-elements/message"
+import { COUNCIL_MODELS } from "@/lib/council-config"
 
 // Types matching the API response
 interface Stage1Response {
@@ -199,6 +200,27 @@ export default function CouncilPage() {
               evaluation: evaluation || prev[stage]?.[modelId]?.evaluation,
               parsedRanking: parsedRanking || prev[stage]?.[modelId]?.parsedRanking,
               synthesis: synthesis || prev[stage]?.[modelId]?.synthesis,
+            },
+          },
+        }))
+        break
+      }
+
+      case "model_chunk": {
+        const { stage, modelId, chunk } = data as {
+          stage: number
+          modelId: string
+          chunk: string
+        }
+
+        setModelStatuses((prev) => ({
+          ...prev,
+          [stage]: {
+            ...prev[stage],
+            [modelId]: {
+              ...prev[stage]?.[modelId],
+              status: prev[stage]?.[modelId]?.status || "generating",
+              content: (prev[stage]?.[modelId]?.content || "") + chunk,
             },
           },
         }))
@@ -403,54 +425,68 @@ export default function CouncilPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {stage1Data.length > 0 ? (
-                  <Tabs defaultValue={stage1Data[0]?.modelId} className="w-full">
-                    <TabsList className="w-full justify-start">
-                      {stage1Data.map((response) => (
-                        <TabsTrigger
-                          key={response.modelId}
-                          value={response.modelId}
-                          className="flex items-center gap-2"
-                        >
-                          {getStatusIcon(modelStatuses[1]?.[response.modelId]?.status || "complete")}
-                          {response.modelName}
-                        </TabsTrigger>
-                      ))}
-                    </TabsList>
-                    {stage1Data.map((response) => (
-                      <TabsContent key={response.modelId} value={response.modelId}>
-                        <ScrollArea className="h-[300px] rounded-md border p-4">
-                          <div className="prose prose-sm max-w-none dark:prose-invert">
-                            <Badge variant="secondary" className="mb-2">
-                              {response.label}
-                            </Badge>
-                            <MessageResponse>{response.content}</MessageResponse>
-                          </div>
-                        </ScrollArea>
-                      </TabsContent>
-                    ))}
-                  </Tabs>
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-3">
-                    {Object.entries(modelStatuses[1] || {})
-                      .filter(([, status]) =>
-                        ["generating", "idle"].includes(status.status)
-                      )
-                      .map(([modelId, status]) => (
-                        <Card key={modelId} className="border-dashed">
-                          <CardContent className="flex items-center gap-3 pt-6">
-                            {getStatusIcon(status.status)}
-                            <div>
-                              <p className="font-medium">{modelId}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {getStatusText(status.status)}
-                              </p>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                  </div>
-                )}
+                {(() => {
+                  // Get models with streaming content or completed data
+                  const streamingModels = Object.entries(modelStatuses[1] || {})
+                    .filter(([, status]) => status.content || status.status === "generating")
+                    .map(([modelId, status]) => ({
+                      modelId,
+                      modelName: COUNCIL_MODELS.find((m) => m.id === modelId)?.name || modelId,
+                      content: status.content || "",
+                      label: stage1Data.find((r) => r.modelId === modelId)?.label || "",
+                      status: status.status,
+                    }))
+
+                  // Use stage1Data if complete, otherwise use streaming data
+                  const displayModels = stage1Data.length > 0 ? stage1Data : streamingModels
+
+                  if (displayModels.length > 0) {
+                    return (
+                      <Tabs defaultValue={displayModels[0]?.modelId} className="w-full">
+                        <TabsList className="w-full justify-start">
+                          {displayModels.map((response) => (
+                            <TabsTrigger
+                              key={response.modelId}
+                              value={response.modelId}
+                              className="flex items-center gap-2"
+                            >
+                              {getStatusIcon(modelStatuses[1]?.[response.modelId]?.status || "complete")}
+                              {response.modelName}
+                            </TabsTrigger>
+                          ))}
+                        </TabsList>
+                        {displayModels.map((response) => {
+                          // Get content from streaming state if available, otherwise from response
+                          const streamingContent = modelStatuses[1]?.[response.modelId]?.content
+                          const content = streamingContent || response.content
+
+                          return (
+                            <TabsContent key={response.modelId} value={response.modelId}>
+                              <ScrollArea className="h-[300px] rounded-md border p-4">
+                                <div className="prose prose-sm max-w-none dark:prose-invert">
+                                  {response.label && (
+                                    <Badge variant="secondary" className="mb-2">
+                                      {response.label}
+                                    </Badge>
+                                  )}
+                                  <MessageResponse>{content}</MessageResponse>
+                                </div>
+                              </ScrollArea>
+                            </TabsContent>
+                          )
+                        })}
+                      </Tabs>
+                    )
+                  }
+
+                  // Show loading state if no models have started yet
+                  return (
+                    <div className="flex items-center justify-center py-8 text-muted-foreground">
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Waiting for council members to respond...
+                    </div>
+                  )
+                })()}
               </CardContent>
             </Card>
           )}

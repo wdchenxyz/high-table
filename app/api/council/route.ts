@@ -1,4 +1,4 @@
-import { generateText } from "ai"
+import { generateText, streamText } from "ai"
 import { openai } from "@ai-sdk/openai"
 import { anthropic } from "@ai-sdk/anthropic"
 import { google } from "@ai-sdk/google"
@@ -141,23 +141,39 @@ export async function POST(request: Request) {
           status: "generating",
         })
 
-        const content = await queryModel(
-          model,
-          "You are a helpful AI assistant. Provide a thoughtful, accurate, and well-structured response.",
-          question
-        )
+        let fullContent = ""
+
+        try {
+          const result = streamText({
+            model: `${model.provider}/${model.model}`,
+            system: "You are a helpful AI assistant. Provide a thoughtful, accurate, and well-structured response.",
+            prompt: question,
+          })
+
+          for await (const chunk of result.textStream) {
+            fullContent += chunk
+            await sendEvent("model_chunk", {
+              stage: 1,
+              modelId: model.id,
+              chunk,
+            })
+          }
+        } catch (error) {
+          console.error(`Error streaming from ${model.name}:`, error)
+          fullContent = `[Error: Failed to get response from ${model.name}]`
+        }
 
         await sendEvent("model_status", {
           stage: 1,
           modelId: model.id,
           status: "complete",
-          content,
+          content: fullContent,
         })
 
         return {
           modelId: model.id,
           modelName: model.name,
-          content,
+          content: fullContent,
           label: generateLabel(index),
         }
       })
