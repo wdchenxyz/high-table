@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from "react"
+import { useChat } from "@ai-sdk/react"
+import { DefaultChatTransport } from "ai"
 import {
   MessageSquare,
   Plus,
@@ -8,6 +10,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Trash2,
+  Loader2,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -29,62 +32,194 @@ import {
   SidebarProvider,
   SidebarFooter,
 } from "@/components/ui/sidebar"
-import { useConversations, type Message } from "@/hooks/use-conversations"
+
+interface StoredConversation {
+  id: string
+  title: string
+  createdAt: string
+}
+
+const CONVERSATIONS_KEY = "chat-conversations"
+const ACTIVE_CONVERSATION_KEY = "chat-active-conversation"
+
+function getStoredConversations(): StoredConversation[] {
+  if (typeof window === "undefined") return []
+  const stored = localStorage.getItem(CONVERSATIONS_KEY)
+  if (stored) {
+    try {
+      return JSON.parse(stored)
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
+function saveConversations(conversations: StoredConversation[]) {
+  localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(conversations))
+}
+
+function getActiveConversationId(): string {
+  if (typeof window === "undefined") return ""
+  return localStorage.getItem(ACTIVE_CONVERSATION_KEY) || ""
+}
+
+function saveActiveConversationId(id: string) {
+  localStorage.setItem(ACTIVE_CONVERSATION_KEY, id)
+}
 
 export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = React.useState(true)
-  const [inputValue, setInputValue] = React.useState("")
+  const [conversations, setConversations] = React.useState<StoredConversation[]>([])
+  const [activeConversationId, setActiveConversationId] = React.useState<string>("")
+  const [isLoaded, setIsLoaded] = React.useState(false)
+  const [input, setInput] = React.useState("")
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
 
-  const {
-    conversations,
-    activeConversation,
-    activeConversationId,
-    setActiveConversationId,
-    createConversation,
-    deleteConversation,
-    addMessage,
-    isLoaded,
-  } = useConversations()
+  // Initialize from localStorage
+  React.useEffect(() => {
+    const stored = getStoredConversations()
+    const activeId = getActiveConversationId()
 
-  const scrollToBottom = () => {
+    if (stored.length === 0) {
+      const defaultConversation: StoredConversation = {
+        id: "default",
+        title: "New conversation",
+        createdAt: new Date().toISOString(),
+      }
+      setConversations([defaultConversation])
+      setActiveConversationId(defaultConversation.id)
+      saveConversations([defaultConversation])
+      saveActiveConversationId(defaultConversation.id)
+    } else {
+      setConversations(stored)
+      setActiveConversationId(activeId || stored[0].id)
+    }
+    setIsLoaded(true)
+  }, [])
+
+  // Use the AI SDK useChat hook
+  const {
+    messages,
+    sendMessage,
+    status,
+    setMessages,
+  } = useChat({
+    id: activeConversationId,
+    transport: new DefaultChatTransport({
+      api: "/api/chat",
+    }),
+  })
+
+  const isLoading = status === "streaming" || status === "submitted"
+
+  // Update conversation title
+  const updateConversationTitle = React.useCallback((id: string, content: string) => {
+    setConversations((prev) => {
+      const updated = prev.map((c) => {
+        if (c.id === id && c.title === "New conversation") {
+          return {
+            ...c,
+            title: content.slice(0, 30) + (content.length > 30 ? "..." : ""),
+          }
+        }
+        return c
+      })
+      saveConversations(updated)
+      return updated
+    })
+  }, [])
+
+  // Handle title update when first message is sent
+  React.useEffect(() => {
+    if (messages.length === 1 && messages[0].role === "user") {
+      const content = messages[0].parts
+        ?.filter((p): p is { type: "text"; text: string } => p.type === "text")
+        .map((p) => p.text)
+        .join("") || ""
+      if (content) {
+        updateConversationTitle(activeConversationId, content)
+      }
+    }
+  }, [messages, activeConversationId, updateConversationTitle])
+
+  // Scroll to bottom when messages change
+  React.useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages])
+
+  // Switch conversation
+  const switchConversation = (id: string) => {
+    setActiveConversationId(id)
+    saveActiveConversationId(id)
+    setMessages([])
   }
 
-  React.useEffect(() => {
-    scrollToBottom()
-  }, [activeConversation?.messages])
-
-  const handleSendMessage = () => {
-    if (!inputValue.trim() || !activeConversation) return
-
-    const userMessage: Message = {
+  // Create new conversation
+  const createConversation = () => {
+    const newConversation: StoredConversation = {
       id: Date.now().toString(),
-      role: "user",
-      content: inputValue.trim(),
+      title: "New conversation",
+      createdAt: new Date().toISOString(),
     }
+    const updated = [newConversation, ...conversations]
+    setConversations(updated)
+    saveConversations(updated)
+    setActiveConversationId(newConversation.id)
+    saveActiveConversationId(newConversation.id)
+    setMessages([])
+  }
 
-    addMessage(activeConversationId, userMessage)
+  // Delete conversation
+  const deleteConversation = (id: string) => {
+    const filtered = conversations.filter((c) => c.id !== id)
 
-    // Simulate assistant response
-    setTimeout(() => {
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content:
-          "This is a simulated response. Connect to an AI backend to get real responses.",
+    if (filtered.length === 0) {
+      const newDefault: StoredConversation = {
+        id: Date.now().toString(),
+        title: "New conversation",
+        createdAt: new Date().toISOString(),
       }
-      addMessage(activeConversationId, assistantMessage)
-    }, 500)
+      setConversations([newDefault])
+      saveConversations([newDefault])
+      setActiveConversationId(newDefault.id)
+      saveActiveConversationId(newDefault.id)
+      setMessages([])
+    } else {
+      setConversations(filtered)
+      saveConversations(filtered)
+      if (activeConversationId === id) {
+        setActiveConversationId(filtered[0].id)
+        saveActiveConversationId(filtered[0].id)
+        setMessages([])
+      }
+    }
+  }
 
-    setInputValue("")
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (input.trim() && !isLoading) {
+      sendMessage({ text: input })
+      setInput("")
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
-      handleSendMessage()
+      if (input.trim() && !isLoading) {
+        sendMessage({ text: input })
+        setInput("")
+      }
     }
+  }
+
+  // Helper to extract text content from message parts
+  const getMessageText = (message: typeof messages[0]) => {
+    return message.parts
+      ?.filter((p): p is { type: "text"; text: string } => p.type === "text")
+      .map((p) => p.text)
+      .join("") || ""
   }
 
   // Show loading state while hydrating from localStorage
@@ -95,6 +230,10 @@ export default function ChatPage() {
       </div>
     )
   }
+
+  const activeConversation = conversations.find(
+    (c) => c.id === activeConversationId
+  )
 
   return (
     <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
@@ -119,9 +258,7 @@ export default function ChatPage() {
                     <SidebarMenuItem key={conversation.id} className="group">
                       <SidebarMenuButton
                         isActive={conversation.id === activeConversationId}
-                        onClick={() =>
-                          setActiveConversationId(conversation.id)
-                        }
+                        onClick={() => switchConversation(conversation.id)}
                       >
                         <MessageSquare className="h-4 w-4 shrink-0" />
                         <span className="truncate">{conversation.title}</span>
@@ -173,7 +310,7 @@ export default function ChatPage() {
         {/* Messages */}
         <ScrollArea className="flex-1 p-4">
           <div className="mx-auto max-w-3xl space-y-6">
-            {activeConversation?.messages.length === 0 && (
+            {messages.length === 0 && (
               <div className="flex h-[60vh] flex-col items-center justify-center text-center">
                 <MessageSquare className="mb-4 h-12 w-12 text-muted-foreground" />
                 <h2 className="text-xl font-semibold">How can I help you today?</h2>
@@ -183,7 +320,7 @@ export default function ChatPage() {
               </div>
             )}
 
-            {activeConversation?.messages.map((message) => (
+            {messages.map((message) => (
               <div
                 key={message.id}
                 className={cn(
@@ -206,7 +343,7 @@ export default function ChatPage() {
                       : "bg-muted"
                   )}
                 >
-                  <p className="whitespace-pre-wrap">{message.content}</p>
+                  <p className="whitespace-pre-wrap">{getMessageText(message)}</p>
                 </div>
                 {message.role === "user" && (
                   <Avatar className="h-8 w-8 shrink-0">
@@ -215,35 +352,54 @@ export default function ChatPage() {
                 )}
               </div>
             ))}
+
+            {isLoading && messages[messages.length - 1]?.role === "user" && (
+              <div className="flex gap-4 justify-start">
+                <Avatar className="h-8 w-8 shrink-0">
+                  <AvatarFallback className="bg-primary text-primary-foreground">
+                    AI
+                  </AvatarFallback>
+                </Avatar>
+                <div className="bg-muted rounded-2xl px-4 py-3">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                </div>
+              </div>
+            )}
+
             <div ref={messagesEndRef} />
           </div>
         </ScrollArea>
 
         {/* Input */}
         <div className="border-t p-4">
-          <div className="mx-auto max-w-3xl">
+          <form onSubmit={handleSubmit} className="mx-auto max-w-3xl">
             <div className="relative flex items-end gap-2">
               <Textarea
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Type your message..."
                 className="min-h-[52px] max-h-[200px] resize-none pr-12"
                 rows={1}
+                disabled={isLoading}
               />
               <Button
-                onClick={handleSendMessage}
-                disabled={!inputValue.trim()}
+                type="submit"
+                disabled={!input.trim() || isLoading}
                 size="icon"
                 className="absolute bottom-2 right-2 h-8 w-8"
               >
-                <Send className="h-4 w-4" />
+                {isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
               </Button>
             </div>
             <p className="mt-2 text-center text-xs text-muted-foreground">
               Press Enter to send, Shift+Enter for new line
             </p>
-          </div>
+          </form>
         </div>
       </SidebarInset>
     </SidebarProvider>
