@@ -8,7 +8,6 @@ import {
   PanelLeftClose,
   PanelLeft,
   Trash2,
-  MoreHorizontal,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -30,43 +29,23 @@ import {
   SidebarProvider,
   SidebarFooter,
 } from "@/components/ui/sidebar"
-
-interface Message {
-  id: string
-  role: "user" | "assistant"
-  content: string
-}
-
-interface Conversation {
-  id: string
-  title: string
-  messages: Message[]
-  createdAt: Date
-}
+import { useConversations, type Message } from "@/hooks/use-conversations"
 
 export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = React.useState(true)
-  const [conversations, setConversations] = React.useState<Conversation[]>([
-    {
-      id: "1",
-      title: "Welcome conversation",
-      messages: [
-        {
-          id: "1",
-          role: "assistant",
-          content: "Hello! How can I help you today?",
-        },
-      ],
-      createdAt: new Date(),
-    },
-  ])
-  const [activeConversationId, setActiveConversationId] = React.useState("1")
   const [inputValue, setInputValue] = React.useState("")
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
 
-  const activeConversation = conversations.find(
-    (c) => c.id === activeConversationId
-  )
+  const {
+    conversations,
+    activeConversation,
+    activeConversationId,
+    setActiveConversationId,
+    createConversation,
+    deleteConversation,
+    addMessage,
+    isLoaded,
+  } = useConversations()
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -75,25 +54,6 @@ export default function ChatPage() {
   React.useEffect(() => {
     scrollToBottom()
   }, [activeConversation?.messages])
-
-  const handleNewConversation = () => {
-    const newConversation: Conversation = {
-      id: Date.now().toString(),
-      title: "New conversation",
-      messages: [],
-      createdAt: new Date(),
-    }
-    setConversations([newConversation, ...conversations])
-    setActiveConversationId(newConversation.id)
-  }
-
-  const handleDeleteConversation = (id: string) => {
-    const filtered = conversations.filter((c) => c.id !== id)
-    setConversations(filtered)
-    if (activeConversationId === id && filtered.length > 0) {
-      setActiveConversationId(filtered[0].id)
-    }
-  }
 
   const handleSendMessage = () => {
     if (!inputValue.trim() || !activeConversation) return
@@ -104,30 +64,19 @@ export default function ChatPage() {
       content: inputValue.trim(),
     }
 
+    addMessage(activeConversationId, userMessage)
+
     // Simulate assistant response
-    const assistantMessage: Message = {
-      id: (Date.now() + 1).toString(),
-      role: "assistant",
-      content:
-        "This is a simulated response. Connect to an AI backend to get real responses.",
-    }
-
-    const updatedConversations = conversations.map((c) => {
-      if (c.id === activeConversationId) {
-        const updatedMessages = [...c.messages, userMessage, assistantMessage]
-        return {
-          ...c,
-          messages: updatedMessages,
-          title:
-            c.messages.length === 0
-              ? inputValue.slice(0, 30) + (inputValue.length > 30 ? "..." : "")
-              : c.title,
-        }
+    setTimeout(() => {
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content:
+          "This is a simulated response. Connect to an AI backend to get real responses.",
       }
-      return c
-    })
+      addMessage(activeConversationId, assistantMessage)
+    }, 500)
 
-    setConversations(updatedConversations)
     setInputValue("")
   }
 
@@ -138,12 +87,21 @@ export default function ChatPage() {
     }
   }
 
+  // Show loading state while hydrating from localStorage
+  if (!isLoaded) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    )
+  }
+
   return (
     <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
       <Sidebar className="border-r">
         <SidebarHeader className="border-b px-4 py-3">
           <Button
-            onClick={handleNewConversation}
+            onClick={createConversation}
             className="w-full justify-start gap-2"
             variant="outline"
           >
@@ -172,7 +130,7 @@ export default function ChatPage() {
                         variant="ghost"
                         size="icon"
                         className="absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 opacity-0 group-hover:opacity-100"
-                        onClick={() => handleDeleteConversation(conversation.id)}
+                        onClick={() => deleteConversation(conversation.id)}
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>
