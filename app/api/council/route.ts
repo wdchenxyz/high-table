@@ -38,19 +38,6 @@ interface CouncilResult {
   }
 }
 
-function getModel(config: CouncilModel) {
-  switch (config.provider) {
-    case "openai":
-      return openai(config.model)
-    case "anthropic":
-      return anthropic(config.model)
-    case "google":
-      return google(config.model)
-    default:
-      throw new Error(`Unknown provider: ${config.provider}`)
-  }
-}
-
 async function queryModel(
   config: CouncilModel,
   systemPrompt: string,
@@ -58,7 +45,7 @@ async function queryModel(
 ): Promise<string> {
   try {
     const { text } = await generateText({
-      model: getModel(config),
+      model: `${config.provider}/${config.model}`,
       system: systemPrompt,
       prompt: userPrompt,
     })
