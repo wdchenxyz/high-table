@@ -213,17 +213,39 @@ export default function CouncilPage() {
           chunk: string
         }
 
-        setModelStatuses((prev) => ({
-          ...prev,
-          [stage]: {
-            ...prev[stage],
-            [modelId]: {
-              ...prev[stage]?.[modelId],
-              status: prev[stage]?.[modelId]?.status || "generating",
-              content: (prev[stage]?.[modelId]?.content || "") + chunk,
+        setModelStatuses((prev) => {
+          const currentStatus = prev[stage]?.[modelId] || {}
+
+          // Determine which field to update based on stage
+          let updates: Partial<ModelStatus> = {}
+          if (stage === 1) {
+            updates = {
+              status: currentStatus.status || "generating",
+              content: (currentStatus.content || "") + chunk,
+            }
+          } else if (stage === 2) {
+            updates = {
+              status: currentStatus.status || "evaluating",
+              evaluation: (currentStatus.evaluation || "") + chunk,
+            }
+          } else if (stage === 3) {
+            updates = {
+              status: currentStatus.status || "synthesizing",
+              synthesis: (currentStatus.synthesis || "") + chunk,
+            }
+          }
+
+          return {
+            ...prev,
+            [stage]: {
+              ...prev[stage],
+              [modelId]: {
+                ...currentStatus,
+                ...updates,
+              },
             },
-          },
-        }))
+          }
+        })
         break
       }
 
@@ -539,79 +561,92 @@ export default function CouncilPage() {
                 )}
 
                 {/* Individual Evaluations */}
-                {stage2Data?.evaluations ? (
-                  <Accordion type="single" collapsible className="w-full">
-                    {stage2Data.evaluations.map((evaluation) => (
-                      <AccordionItem key={evaluation.modelId} value={evaluation.modelId}>
-                        <AccordionTrigger className="hover:no-underline">
-                          <div className="flex items-center gap-2">
-                            {getStatusIcon("complete")}
-                            <span>{evaluation.modelName}&apos;s Evaluation</span>
-                          </div>
-                        </AccordionTrigger>
-                        <AccordionContent>
-                          <div className="space-y-4 pt-2">
-                            <ScrollArea className="h-[200px] rounded-md border p-4">
-                              <div className="prose prose-sm max-w-none dark:prose-invert">
-                                <MessageResponse>
-                                  {stage2Data.labelToModel
-                                    ? deAnonymizeText(
-                                        evaluation.evaluation,
-                                        stage2Data.labelToModel
-                                      )
-                                    : evaluation.evaluation}
-                                </MessageResponse>
-                              </div>
-                            </ScrollArea>
-                            {evaluation.parsedRanking.length > 0 && (
-                              <Collapsible>
-                                <CollapsibleTrigger asChild>
-                                  <Button variant="outline" size="sm">
-                                    View Extracted Ranking
-                                  </Button>
-                                </CollapsibleTrigger>
-                                <CollapsibleContent className="mt-2">
-                                  <div className="rounded-md bg-muted p-3">
-                                    <ol className="list-inside list-decimal space-y-1 text-sm">
-                                      {evaluation.parsedRanking.map((label, idx) => (
-                                        <li key={idx}>
-                                          {label}
-                                          {stage2Data.labelToModel?.[label] && (
-                                            <span className="ml-2 text-muted-foreground">
-                                              ({stage2Data.labelToModel[label]})
-                                            </span>
-                                          )}
-                                        </li>
-                                      ))}
-                                    </ol>
-                                  </div>
-                                </CollapsibleContent>
-                              </Collapsible>
-                            )}
-                          </div>
-                        </AccordionContent>
-                      </AccordionItem>
-                    ))}
-                  </Accordion>
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-3">
-                    {Object.entries(modelStatuses[2] || {})
-                      .filter(([, status]) => status.status === "evaluating")
-                      .map(([modelId, status]) => (
-                        <Card key={modelId} className="border-dashed">
-                          <CardContent className="flex items-center gap-3 pt-6">
-                            {getStatusIcon(status.status)}
-                            <div>
-                              <p className="font-medium">{modelId}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {getStatusText(status.status)}
-                              </p>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                  </div>
-                )}
+                {(() => {
+                  // Get models with streaming evaluation content
+                  const streamingEvaluations = Object.entries(modelStatuses[2] || {})
+                    .filter(([, status]) => status.evaluation || status.status === "evaluating")
+                    .map(([modelId, status]) => ({
+                      modelId,
+                      modelName: COUNCIL_MODELS.find((m) => m.id === modelId)?.name || modelId,
+                      evaluation: status.evaluation || "",
+                      parsedRanking: status.parsedRanking || [],
+                      status: status.status,
+                    }))
+
+                  // Use stage2Data if complete, otherwise use streaming data
+                  const displayEvaluations = stage2Data?.evaluations || streamingEvaluations
+
+                  if (displayEvaluations.length > 0) {
+                    return (
+                      <Tabs defaultValue={displayEvaluations[0]?.modelId} className="w-full">
+                        <TabsList className="w-full justify-start">
+                          {displayEvaluations.map((evaluation) => (
+                            <TabsTrigger
+                              key={evaluation.modelId}
+                              value={evaluation.modelId}
+                              className="flex items-center gap-2"
+                            >
+                              {getStatusIcon(modelStatuses[2]?.[evaluation.modelId]?.status || "complete")}
+                              {evaluation.modelName}
+                            </TabsTrigger>
+                          ))}
+                        </TabsList>
+                        {displayEvaluations.map((evaluation) => {
+                          // Get content from streaming state if available
+                          const streamingContent = modelStatuses[2]?.[evaluation.modelId]?.evaluation
+                          const content = streamingContent || evaluation.evaluation
+
+                          return (
+                            <TabsContent key={evaluation.modelId} value={evaluation.modelId}>
+                              <ScrollArea className="h-[300px] rounded-md border p-4">
+                                <div className="prose prose-sm max-w-none dark:prose-invert">
+                                  <MessageResponse>
+                                    {stage2Data?.labelToModel
+                                      ? deAnonymizeText(content, stage2Data.labelToModel)
+                                      : content}
+                                  </MessageResponse>
+                                </div>
+                              </ScrollArea>
+                              {evaluation.parsedRanking && evaluation.parsedRanking.length > 0 && (
+                                <Collapsible className="mt-4">
+                                  <CollapsibleTrigger asChild>
+                                    <Button variant="outline" size="sm">
+                                      View Extracted Ranking
+                                    </Button>
+                                  </CollapsibleTrigger>
+                                  <CollapsibleContent className="mt-2">
+                                    <div className="rounded-md bg-muted p-3">
+                                      <ol className="list-inside list-decimal space-y-1 text-sm">
+                                        {evaluation.parsedRanking.map((label, idx) => (
+                                          <li key={idx}>
+                                            {label}
+                                            {stage2Data?.labelToModel?.[label] && (
+                                              <span className="ml-2 text-muted-foreground">
+                                                ({stage2Data.labelToModel[label]})
+                                              </span>
+                                            )}
+                                          </li>
+                                        ))}
+                                      </ol>
+                                    </div>
+                                  </CollapsibleContent>
+                                </Collapsible>
+                              )}
+                            </TabsContent>
+                          )
+                        })}
+                      </Tabs>
+                    )
+                  }
+
+                  // Show loading state if no models have started yet
+                  return (
+                    <div className="flex items-center justify-center py-8 text-muted-foreground">
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Waiting for evaluations to begin...
+                    </div>
+                  )
+                })()}
               </CardContent>
             </Card>
           )}
@@ -635,29 +670,38 @@ export default function CouncilPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {stage3Data?.synthesis ? (
-                  <ScrollArea className="h-[400px] rounded-md border bg-background p-4">
-                    <div className="prose prose-sm max-w-none dark:prose-invert">
-                      <MessageResponse>{stage3Data.synthesis}</MessageResponse>
-                    </div>
-                  </ScrollArea>
-                ) : (
-                  <Card className="border-dashed">
-                    <CardContent className="flex items-center gap-3 pt-6">
-                      {getStatusIcon(
-                        modelStatuses[3]?.["gemini-chairman"]?.status || "synthesizing"
-                      )}
-                      <div>
-                        <p className="font-medium">Chairman</p>
-                        <p className="text-sm text-muted-foreground">
-                          {getStatusText(
-                            modelStatuses[3]?.["gemini-chairman"]?.status || "synthesizing"
-                          )}
-                        </p>
+                {(() => {
+                  // Get streaming synthesis content
+                  const streamingSynthesis = modelStatuses[3]?.["gemini-chairman"]?.synthesis
+                  const synthesis = stage3Data?.synthesis || streamingSynthesis
+                  const chairmanStatus = modelStatuses[3]?.["gemini-chairman"]?.status || "synthesizing"
+
+                  if (synthesis) {
+                    return (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          {getStatusIcon(chairmanStatus)}
+                          <span>
+                            {chairmanStatus === "complete" ? "Synthesis complete" : "Synthesizing..."}
+                          </span>
+                        </div>
+                        <ScrollArea className="h-[400px] rounded-md border bg-background p-4">
+                          <div className="prose prose-sm max-w-none dark:prose-invert">
+                            <MessageResponse>{synthesis}</MessageResponse>
+                          </div>
+                        </ScrollArea>
                       </div>
-                    </CardContent>
-                  </Card>
-                )}
+                    )
+                  }
+
+                  // Show loading state if synthesis hasn't started
+                  return (
+                    <div className="flex items-center justify-center py-8 text-muted-foreground">
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Chairman is preparing synthesis...
+                    </div>
+                  )
+                })()}
               </CardContent>
             </Card>
           )}

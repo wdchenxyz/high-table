@@ -223,26 +223,42 @@ Do not include any additional text after the ranking.`
           status: "evaluating",
         })
 
-        const evaluation = await queryModel(
-          model,
-          "You are a fair and impartial judge evaluating AI responses. Be objective and thorough in your analysis.",
-          evaluationPrompt
-        )
+        let fullEvaluation = ""
 
-        const parsedRanking = parseRankingFromText(evaluation)
+        try {
+          const result = streamText({
+            model: `${model.provider}/${model.model}`,
+            system: "You are a fair and impartial judge evaluating AI responses. Be objective and thorough in your analysis.",
+            prompt: evaluationPrompt,
+          })
+
+          for await (const chunk of result.textStream) {
+            fullEvaluation += chunk
+            await sendEvent("model_chunk", {
+              stage: 2,
+              modelId: model.id,
+              chunk,
+            })
+          }
+        } catch (error) {
+          console.error(`Error streaming evaluation from ${model.name}:`, error)
+          fullEvaluation = `[Error: Failed to get evaluation from ${model.name}]`
+        }
+
+        const parsedRanking = parseRankingFromText(fullEvaluation)
 
         await sendEvent("model_status", {
           stage: 2,
           modelId: model.id,
           status: "complete",
-          evaluation,
+          evaluation: fullEvaluation,
           parsedRanking,
         })
 
         return {
           modelId: model.id,
           modelName: model.name,
-          evaluation,
+          evaluation: fullEvaluation,
           parsedRanking,
         }
       })
@@ -301,11 +317,27 @@ Your task:
 
 Begin your synthesis:`
 
-      const synthesis = await queryModel(
-        CHAIRMAN_MODEL,
-        "You are the Chairman of an AI council, responsible for synthesizing the collective wisdom of multiple AI models into a single, authoritative response.",
-        synthesisPrompt
-      )
+      let synthesis = ""
+
+      try {
+        const result = streamText({
+          model: `${CHAIRMAN_MODEL.provider}/${CHAIRMAN_MODEL.model}`,
+          system: "You are the Chairman of an AI council, responsible for synthesizing the collective wisdom of multiple AI models into a single, authoritative response.",
+          prompt: synthesisPrompt,
+        })
+
+        for await (const chunk of result.textStream) {
+          synthesis += chunk
+          await sendEvent("model_chunk", {
+            stage: 3,
+            modelId: CHAIRMAN_MODEL.id,
+            chunk,
+          })
+        }
+      } catch (error) {
+        console.error(`Error streaming synthesis from Chairman:`, error)
+        synthesis = `[Error: Failed to get synthesis from Chairman]`
+      }
 
       await sendEvent("model_status", {
         stage: 3,
