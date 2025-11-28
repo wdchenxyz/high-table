@@ -2,6 +2,8 @@
 
 import * as React from "react"
 import {
+  Check,
+  Copy,
   Users,
   Send,
   Loader2,
@@ -130,6 +132,57 @@ const createEmptyConversationState = (): ConversationState => ({
 })
 
 const CHAIRMAN_MODEL_ID = "gemini-chairman"
+
+interface CopyResponseButtonProps {
+  text: string
+  label?: string
+}
+
+const CopyResponseButton = ({ text, label = "Copy" }: CopyResponseButtonProps) => {
+  const [copied, setCopied] = React.useState(false)
+  const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  React.useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+    }
+  }, [])
+
+  const handleCopy = React.useCallback(async () => {
+    if (!text) return
+
+    try {
+      if (typeof navigator === "undefined" || !navigator.clipboard) {
+        throw new Error("Clipboard API is not available")
+      }
+
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+      timeoutRef.current = setTimeout(() => setCopied(false), 2000)
+    } catch (error) {
+      console.error("Failed to copy response", error)
+    }
+  }, [text])
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-8 w-8 text-muted-foreground hover:text-foreground"
+      onClick={handleCopy}
+      disabled={!text}
+      aria-label={label}
+      title={copied ? "Copied!" : label}
+    >
+      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+    </Button>
+  )
+}
 
 const buildModelStatusesFromResult = (
   result: CouncilResult
@@ -1003,6 +1056,9 @@ export default function CouncilPage() {
 
                           return (
                             <TabsContent key={response.modelId} value={response.modelId}>
+                              <div className="mb-2 flex justify-end">
+                                <CopyResponseButton text={content} label="Copy response" />
+                              </div>
                               <ScrollArea className="h-[300px] rounded-md border p-4">
                                 <div className="prose prose-sm max-w-none dark:prose-invert">
                                   {response.label && (
@@ -1199,11 +1255,14 @@ export default function CouncilPage() {
                   if (synthesis) {
                     return (
                       <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          {getStatusIcon(chairmanStatus)}
-                          <span>
-                            {chairmanStatus === "complete" ? "Synthesis complete" : "Synthesizing..."}
-                          </span>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            {getStatusIcon(chairmanStatus)}
+                            <span>
+                              {chairmanStatus === "complete" ? "Synthesis complete" : "Synthesizing..."}
+                            </span>
+                          </div>
+                          <CopyResponseButton text={synthesis} label="Copy synthesis" />
                         </div>
                         <ScrollArea className="h-[400px] rounded-md border bg-background p-4">
                           <div className="prose prose-sm max-w-none dark:prose-invert">
