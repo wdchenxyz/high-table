@@ -7,12 +7,14 @@ import {
   Loader2,
   CheckCircle2,
   Circle,
-  ArrowLeft,
   Sparkles,
   Scale,
   Crown,
+  Plus,
+  PanelLeftClose,
+  PanelLeft,
+  Trash2,
 } from "lucide-react"
-import Link from "next/link"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -33,6 +35,21 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarFooter,
+} from "@/components/ui/sidebar"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { MessageResponse } from "@/components/ai-elements/message"
 import { COUNCIL_MODELS } from "@/lib/council-config"
 
@@ -79,7 +96,96 @@ interface ModelStatus {
 
 type StageStatus = "idle" | "started" | "complete"
 
+// Conversation types
+interface StoredConversation {
+  id: string
+  title: string
+  createdAt: string
+}
+
+interface CouncilResult {
+  question: string
+  stage1Data: Stage1Response[]
+  stage2Data: Stage2Data | null
+  stage3Data: Stage3Data | null
+  stageStatuses: Record<number, StageStatus>
+}
+
+// Active conversation ID stored in localStorage
+const ACTIVE_COUNCIL_KEY = "council-active-conversation"
+
+function getActiveConversationId(): string {
+  if (typeof window === "undefined") return ""
+  return localStorage.getItem(ACTIVE_COUNCIL_KEY) || ""
+}
+
+function saveActiveConversationId(id: string) {
+  localStorage.setItem(ACTIVE_COUNCIL_KEY, id)
+}
+
+// API storage functions
+async function fetchConversations(): Promise<StoredConversation[]> {
+  try {
+    const res = await fetch("/api/council/conversations")
+    if (!res.ok) return []
+    return await res.json()
+  } catch {
+    return []
+  }
+}
+
+async function saveConversationsToServer(conversations: StoredConversation[]) {
+  try {
+    await fetch("/api/council/conversations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(conversations),
+    })
+  } catch (error) {
+    console.error("Failed to save council conversations:", error)
+  }
+}
+
+async function fetchResult(conversationId: string): Promise<CouncilResult | null> {
+  try {
+    const res = await fetch(`/api/council/results?conversationId=${conversationId}`)
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+async function saveResultToServer(conversationId: string, result: CouncilResult) {
+  try {
+    await fetch("/api/council/results", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId, result }),
+    })
+  } catch (error) {
+    console.error("Failed to save council result:", error)
+  }
+}
+
+async function deleteResultFromServer(conversationId: string) {
+  try {
+    await fetch(`/api/council/results?conversationId=${conversationId}`, {
+      method: "DELETE",
+    })
+  } catch (error) {
+    console.error("Failed to delete council result:", error)
+  }
+}
+
 export default function CouncilPage() {
+  // Sidebar and conversation state
+  const [sidebarOpen, setSidebarOpen] = React.useState(true)
+  const [conversations, setConversations] = React.useState<StoredConversation[]>([])
+  const [activeConversationId, setActiveConversationId] = React.useState<string>("")
+  const [isLoaded, setIsLoaded] = React.useState(false)
+
+  // Council deliberation state
   const [question, setQuestion] = React.useState("")
   const [isProcessing, setIsProcessing] = React.useState(false)
   const [currentStage, setCurrentStage] = React.useState(0)
@@ -98,9 +204,175 @@ export default function CouncilPage() {
   const [stage3Data, setStage3Data] = React.useState<Stage3Data | null>(null)
   const [error, setError] = React.useState<string | null>(null)
 
+  // Initialize conversations from server
+  React.useEffect(() => {
+    async function loadData() {
+      const stored = await fetchConversations()
+      const activeId = getActiveConversationId()
+
+      let currentId: string
+      if (stored.length === 0) {
+        const defaultConversation: StoredConversation = {
+          id: "default",
+          title: "New deliberation",
+          createdAt: new Date().toISOString(),
+        }
+        setConversations([defaultConversation])
+        currentId = defaultConversation.id
+        await saveConversationsToServer([defaultConversation])
+        saveActiveConversationId(defaultConversation.id)
+      } else {
+        setConversations(stored)
+        currentId = activeId || stored[0].id
+      }
+
+      setActiveConversationId(currentId)
+
+      // Load result for current conversation
+      const result = await fetchResult(currentId)
+      if (result) {
+        setQuestion(result.question)
+        setStage1Data(result.stage1Data)
+        setStage2Data(result.stage2Data)
+        setStage3Data(result.stage3Data)
+        setStageStatuses(result.stageStatuses)
+        setCurrentStage(result.stageStatuses[3] === "complete" ? 3 :
+                       result.stageStatuses[2] === "complete" ? 2 :
+                       result.stageStatuses[1] === "complete" ? 1 : 0)
+      }
+
+      setIsLoaded(true)
+    }
+
+    loadData()
+  }, [])
+
+  // Save result when deliberation completes
+  React.useEffect(() => {
+    if (activeConversationId && stageStatuses[3] === "complete" && stage3Data) {
+      const result: CouncilResult = {
+        question,
+        stage1Data,
+        stage2Data,
+        stage3Data,
+        stageStatuses,
+      }
+      saveResultToServer(activeConversationId, result)
+    }
+  }, [activeConversationId, stageStatuses, stage3Data, question, stage1Data, stage2Data])
+
+  // Update conversation title when question is submitted
+  const updateConversationTitle = React.useCallback((id: string, content: string) => {
+    setConversations((prev) => {
+      const updated = prev.map((c) => {
+        if (c.id === id && c.title === "New deliberation") {
+          return {
+            ...c,
+            title: content.slice(0, 30) + (content.length > 30 ? "..." : ""),
+          }
+        }
+        return c
+      })
+      saveConversationsToServer(updated)
+      return updated
+    })
+  }, [])
+
+  // Reset state for new/switched conversation
+  const resetDeliberationState = () => {
+    setQuestion("")
+    setIsProcessing(false)
+    setCurrentStage(0)
+    setStageStatuses({ 1: "idle", 2: "idle", 3: "idle" })
+    setModelStatuses({ 1: {}, 2: {}, 3: {} })
+    setStage1Data([])
+    setStage2Data(null)
+    setStage3Data(null)
+    setError(null)
+  }
+
+  // Switch conversation
+  const switchConversation = async (id: string) => {
+    if (id === activeConversationId) return
+
+    setActiveConversationId(id)
+    saveActiveConversationId(id)
+
+    // Reset and load new conversation's result
+    resetDeliberationState()
+    const result = await fetchResult(id)
+    if (result) {
+      setQuestion(result.question)
+      setStage1Data(result.stage1Data)
+      setStage2Data(result.stage2Data)
+      setStage3Data(result.stage3Data)
+      setStageStatuses(result.stageStatuses)
+      setCurrentStage(result.stageStatuses[3] === "complete" ? 3 :
+                     result.stageStatuses[2] === "complete" ? 2 :
+                     result.stageStatuses[1] === "complete" ? 1 : 0)
+    }
+  }
+
+  // Create new conversation
+  const createConversation = async () => {
+    const newConversation: StoredConversation = {
+      id: Date.now().toString(),
+      title: "New deliberation",
+      createdAt: new Date().toISOString(),
+    }
+    const updated = [newConversation, ...conversations]
+    setConversations(updated)
+    await saveConversationsToServer(updated)
+    setActiveConversationId(newConversation.id)
+    saveActiveConversationId(newConversation.id)
+    resetDeliberationState()
+  }
+
+  // Delete conversation
+  const deleteConversation = async (id: string) => {
+    const filtered = conversations.filter((c) => c.id !== id)
+    await deleteResultFromServer(id)
+
+    if (filtered.length === 0) {
+      const newDefault: StoredConversation = {
+        id: Date.now().toString(),
+        title: "New deliberation",
+        createdAt: new Date().toISOString(),
+      }
+      setConversations([newDefault])
+      await saveConversationsToServer([newDefault])
+      setActiveConversationId(newDefault.id)
+      saveActiveConversationId(newDefault.id)
+      resetDeliberationState()
+    } else {
+      setConversations(filtered)
+      await saveConversationsToServer(filtered)
+      if (activeConversationId === id) {
+        const nextId = filtered[0].id
+        setActiveConversationId(nextId)
+        saveActiveConversationId(nextId)
+        resetDeliberationState()
+        const result = await fetchResult(nextId)
+        if (result) {
+          setQuestion(result.question)
+          setStage1Data(result.stage1Data)
+          setStage2Data(result.stage2Data)
+          setStage3Data(result.stage3Data)
+          setStageStatuses(result.stageStatuses)
+          setCurrentStage(result.stageStatuses[3] === "complete" ? 3 :
+                         result.stageStatuses[2] === "complete" ? 2 :
+                         result.stageStatuses[1] === "complete" ? 1 : 0)
+        }
+      }
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!question.trim() || isProcessing) return
+
+    // Update conversation title
+    updateConversationTitle(activeConversationId, question.trim())
 
     // Reset state
     setIsProcessing(true)
@@ -315,27 +587,99 @@ export default function CouncilPage() {
     return result
   }
 
+  // Show loading state while hydrating
+  if (!isLoaded) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    )
+  }
+
+  const activeConversation = conversations.find(
+    (c) => c.id === activeConversationId
+  )
+
   return (
-    <div className="flex min-h-screen flex-col">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-14 items-center gap-4">
-          <Link href="/chat">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
+    <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
+      <Sidebar className="border-r">
+        <SidebarHeader className="border-b px-4 py-3">
+          <Button
+            onClick={createConversation}
+            className="w-full justify-start gap-2"
+            variant="outline"
+          >
+            <Plus className="h-4 w-4" />
+            New deliberation
+          </Button>
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupLabel>Deliberations</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <ScrollArea className="h-[calc(100vh-180px)]">
+                <SidebarMenu>
+                  {conversations.map((conversation) => (
+                    <SidebarMenuItem key={conversation.id} className="group">
+                      <SidebarMenuButton
+                        isActive={conversation.id === activeConversationId}
+                        onClick={() => switchConversation(conversation.id)}
+                      >
+                        <Users className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{conversation.title}</span>
+                      </SidebarMenuButton>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 opacity-0 group-hover:opacity-100"
+                        onClick={() => deleteConversation(conversation.id)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </ScrollArea>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+        <SidebarFooter className="border-t p-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Avatar className="h-8 w-8">
+              <AvatarFallback>U</AvatarFallback>
+            </Avatar>
+            <span>User</span>
+          </div>
+        </SidebarFooter>
+      </Sidebar>
+
+      <SidebarInset className="flex flex-col">
+        {/* Header */}
+        <header className="flex h-14 items-center gap-4 border-b px-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+          >
+            {sidebarOpen ? (
+              <PanelLeftClose className="h-5 w-5" />
+            ) : (
+              <PanelLeft className="h-5 w-5" />
+            )}
+          </Button>
           <div className="flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" />
-            <h1 className="font-semibold">LLM Council</h1>
+            <h1 className="font-semibold">
+              {activeConversation?.title || "LLM Council"}
+            </h1>
           </div>
           <Badge variant="secondary" className="ml-auto">
             3-Stage Deliberation
           </Badge>
-        </div>
-      </header>
+        </header>
 
-      <main className="container flex-1 py-6">
+        <ScrollArea className="flex-1">
+          <main className="container py-6">
         <div className="mx-auto max-w-4xl space-y-6">
           {/* Question Input */}
           <Card>
@@ -736,7 +1080,9 @@ export default function CouncilPage() {
             </div>
           )}
         </div>
-      </main>
-    </div>
+          </main>
+        </ScrollArea>
+      </SidebarInset>
+    </SidebarProvider>
   )
 }
