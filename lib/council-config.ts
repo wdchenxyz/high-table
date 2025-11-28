@@ -12,19 +12,19 @@ export interface CouncilModel {
 export const COUNCIL_MODELS: CouncilModel[] = [
   {
     id: "gpt-5.1",
-    name: "GPT",
+    name: "GPT 5.1",
     provider: "openai",
     model: "gpt-5.1",
   },
   {
     id: "claude-sonnet",
-    name: "Claude Sonnet",
+    name: "Claude Sonnet 4.5",
     provider: "anthropic",
     model: "claude-sonnet-4.5"
   },
   {
     id: "gemini-pro",
-    name: "Gemini Pro",
+    name: "Gemini 3 Pro",
     provider: "google",
     model: "gemini-3-pro-preview",
   },
