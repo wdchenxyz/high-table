@@ -16,6 +16,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Trash2,
+  ChevronDown,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -25,7 +26,6 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
 import {
   Collapsible,
   CollapsibleContent,
@@ -40,6 +40,7 @@ import {
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
@@ -132,6 +133,26 @@ const createEmptyConversationState = (): ConversationState => ({
 })
 
 const CHAIRMAN_MODEL_ID = CHAIRMAN_MODEL.id
+
+// Example questions for the empty state - kept short for compact display
+const EXAMPLE_QUESTIONS = [
+  {
+    title: "Technical",
+    question: "Microservices vs monolith for a startup?",
+  },
+  {
+    title: "Philosophy",
+    question: "Is consciousness just information processing?",
+  },
+  {
+    title: "Strategy",
+    question: "When should a company build vs buy software?",
+  },
+  {
+    title: "Creative",
+    question: "How can cities reduce food waste?",
+  },
+]
 
 interface CopyResponseButtonProps {
   text: string
@@ -311,6 +332,13 @@ export default function CouncilPage() {
   const [conversations, setConversations] = React.useState<StoredConversation[]>([])
   const [activeConversationId, setActiveConversationId] = React.useState<string>("")
   const [isLoaded, setIsLoaded] = React.useState(false)
+
+  // Track which stage cards are expanded (default all expanded)
+  const [expandedStages, setExpandedStages] = React.useState<Record<number, boolean>>({
+    1: true,
+    2: true,
+    3: true,
+  })
 
   // Ref to track abort controller for canceling ongoing requests
   const abortControllerRef = React.useRef<AbortController | null>(null)
@@ -581,6 +609,9 @@ export default function CouncilPage() {
     }))
     savedResultsRef.current[conversationId] = false
 
+    // Reset expanded stages for new deliberation
+    setExpandedStages({ 1: true, 2: true, 3: true })
+
     try {
       const response = await fetch("/api/council", {
         method: "POST",
@@ -774,16 +805,6 @@ export default function CouncilPage() {
     }
   }
 
-  const getStageProgress = () => {
-    if (currentStage === 0) return 0
-    if (stageStatuses[3] === "complete") return 100
-    if (currentStage === 3) return 85
-    if (stageStatuses[2] === "complete") return 66
-    if (currentStage === 2) return 50
-    if (stageStatuses[1] === "complete") return 33
-    return 15
-  }
-
   const getStatusIcon = (status: ModelStatus["status"]) => {
     switch (status) {
       case "generating":
@@ -807,6 +828,23 @@ export default function CouncilPage() {
     }
     return result
   }
+
+  // Toggle stage expansion
+  const toggleStage = (stage: number) => {
+    setExpandedStages((prev) => ({
+      ...prev,
+      [stage]: !prev[stage],
+    }))
+  }
+
+  // Auto-collapse previous stages when a new stage starts
+  React.useEffect(() => {
+    if (currentStage === 2 && stageStatuses[1] === "complete") {
+      setExpandedStages((prev) => ({ ...prev, 1: false, 2: true }))
+    } else if (currentStage === 3 && stageStatuses[2] === "complete") {
+      setExpandedStages((prev) => ({ ...prev, 1: false, 2: false, 3: true }))
+    }
+  }, [currentStage, stageStatuses])
 
   // Show loading state while hydrating
   if (!isLoaded) {
@@ -891,7 +929,7 @@ export default function CouncilPage() {
           <div className="flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" />
             <h1 className="font-semibold">
-              {activeConversation?.title || "LLM Council"}
+              {activeConversation?.title || "High Table"}
             </h1>
           </div>
           <Badge variant="secondary" className="ml-auto">
@@ -907,10 +945,10 @@ export default function CouncilPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5" />
-                Ask the Council
+                Ask the High Table
               </CardTitle>
               <CardDescription>
-                Submit a question for the AI council to deliberate on. Multiple models will
+                Submit a question for the High Table to deliberate on. Multiple models will
                 provide responses, evaluate each other anonymously, and a chairman will
                 synthesize the final answer.
               </CardDescription>
@@ -945,7 +983,7 @@ export default function CouncilPage() {
                     ) : (
                       <>
                         <Send className="mr-2 h-4 w-4" />
-                        Submit to Council
+                        Submit to High Table
                       </>
                     )}
                   </Button>
@@ -954,39 +992,171 @@ export default function CouncilPage() {
             </CardContent>
           </Card>
 
-          {/* Progress Bar */}
+          {/* Progress Stepper */}
           {(isProcessing || currentStage > 0) && (
             <Card>
               <CardContent className="pt-6">
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Council Progress</span>
-                    <span>{getStageProgress()}%</span>
+                <div className="flex items-center justify-between">
+                  {/* Stage 1 */}
+                  <div className="flex flex-1 flex-col items-center">
+                    <div
+                      className={cn(
+                        "flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-300",
+                        stageStatuses[1] === "complete"
+                          ? "border-green-500 bg-green-50 text-green-600 dark:bg-green-950/30"
+                          : stageStatuses[1] === "started"
+                            ? "border-primary bg-primary/10 text-primary animate-pulse"
+                            : "border-muted-foreground/30 bg-muted/50 text-muted-foreground"
+                      )}
+                    >
+                      <Sparkles className="h-6 w-6" />
+                    </div>
+                    <span
+                      className={cn(
+                        "mt-2 text-xs font-medium",
+                        stageStatuses[1] !== "idle" ? "text-foreground" : "text-muted-foreground"
+                      )}
+                    >
+                      Responses
+                    </span>
+                    {/* Model Progress Dots */}
+                    <div className="mt-1 flex gap-1">
+                      {COUNCIL_MODELS.map((model) => {
+                        const status = modelStatuses[1]?.[model.id]?.status
+                        return (
+                          <div
+                            key={model.id}
+                            title={model.name}
+                            className={cn(
+                              "h-2 w-2 rounded-full transition-all duration-300",
+                              status === "complete"
+                                ? "bg-green-500"
+                                : status === "generating"
+                                  ? "bg-blue-500 animate-pulse"
+                                  : "bg-muted-foreground/30"
+                            )}
+                          />
+                        )
+                      })}
+                    </div>
                   </div>
-                  <Progress value={getStageProgress()} className="h-2" />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span
+
+                  {/* Connector 1-2 */}
+                  <div
+                    className={cn(
+                      "h-0.5 flex-1 mx-2 transition-all duration-500",
+                      stageStatuses[1] === "complete" ? "bg-green-500" : "bg-muted-foreground/30"
+                    )}
+                  />
+
+                  {/* Stage 2 */}
+                  <div className="flex flex-1 flex-col items-center">
+                    <div
                       className={cn(
-                        stageStatuses[1] !== "idle" && "text-primary font-medium"
+                        "flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-300",
+                        stageStatuses[2] === "complete"
+                          ? "border-green-500 bg-green-50 text-green-600 dark:bg-green-950/30"
+                          : stageStatuses[2] === "started"
+                            ? "border-primary bg-primary/10 text-primary animate-pulse"
+                            : "border-muted-foreground/30 bg-muted/50 text-muted-foreground"
                       )}
                     >
-                      Stage 1: Responses
-                    </span>
+                      <Scale className="h-6 w-6" />
+                    </div>
                     <span
                       className={cn(
-                        stageStatuses[2] !== "idle" && "text-primary font-medium"
+                        "mt-2 text-xs font-medium",
+                        stageStatuses[2] !== "idle" ? "text-foreground" : "text-muted-foreground"
                       )}
                     >
-                      Stage 2: Evaluation
+                      Evaluation
                     </span>
-                    <span
-                      className={cn(
-                        stageStatuses[3] !== "idle" && "text-primary font-medium"
-                      )}
-                    >
-                      Stage 3: Synthesis
-                    </span>
+                    {/* Model Progress Dots */}
+                    <div className="mt-1 flex gap-1">
+                      {COUNCIL_MODELS.map((model) => {
+                        const status = modelStatuses[2]?.[model.id]?.status
+                        return (
+                          <div
+                            key={model.id}
+                            title={model.name}
+                            className={cn(
+                              "h-2 w-2 rounded-full transition-all duration-300",
+                              status === "complete"
+                                ? "bg-green-500"
+                                : status === "evaluating"
+                                  ? "bg-blue-500 animate-pulse"
+                                  : "bg-muted-foreground/30"
+                            )}
+                          />
+                        )
+                      })}
+                    </div>
                   </div>
+
+                  {/* Connector 2-3 */}
+                  <div
+                    className={cn(
+                      "h-0.5 flex-1 mx-2 transition-all duration-500",
+                      stageStatuses[2] === "complete" ? "bg-green-500" : "bg-muted-foreground/30"
+                    )}
+                  />
+
+                  {/* Stage 3 */}
+                  <div className="flex flex-1 flex-col items-center">
+                    <div
+                      className={cn(
+                        "flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-300",
+                        stageStatuses[3] === "complete"
+                          ? "border-green-500 bg-green-50 text-green-600 dark:bg-green-950/30"
+                          : stageStatuses[3] === "started"
+                            ? "border-yellow-500 bg-yellow-500/10 text-yellow-600 animate-pulse"
+                            : "border-muted-foreground/30 bg-muted/50 text-muted-foreground"
+                      )}
+                    >
+                      <Crown className="h-6 w-6" />
+                    </div>
+                    <span
+                      className={cn(
+                        "mt-2 text-xs font-medium",
+                        stageStatuses[3] !== "idle" ? "text-foreground" : "text-muted-foreground"
+                      )}
+                    >
+                      Synthesis
+                    </span>
+                    {/* Chairman Progress Dot */}
+                    <div className="mt-1 flex gap-1">
+                      <div
+                        title={CHAIRMAN_MODEL.name}
+                        className={cn(
+                          "h-2 w-2 rounded-full transition-all duration-300",
+                          stageStatuses[3] === "complete"
+                            ? "bg-green-500"
+                            : stageStatuses[3] === "started"
+                              ? "bg-yellow-500 animate-pulse"
+                              : "bg-muted-foreground/30"
+                        )}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status Text */}
+                <div className="mt-4 text-center text-sm text-muted-foreground">
+                  {stageStatuses[3] === "complete" ? (
+                    <span className="text-green-600 font-medium">Deliberation complete</span>
+                  ) : stageStatuses[3] === "started" ? (
+                    <span>Chairman is synthesizing the final answer...</span>
+                  ) : stageStatuses[2] === "started" ? (
+                    <span>
+                      Models evaluating responses ({Object.values(modelStatuses[2] || {}).filter(s => s.status === "complete").length}/{COUNCIL_MODELS.length})
+                    </span>
+                  ) : stageStatuses[1] === "started" ? (
+                    <span>
+                      Generating responses ({Object.values(modelStatuses[1] || {}).filter(s => s.status === "complete").length}/{COUNCIL_MODELS.length})
+                    </span>
+                  ) : (
+                    <span>Starting deliberation...</span>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -1003,22 +1173,34 @@ export default function CouncilPage() {
 
           {/* Stage 1: Individual Responses */}
           {(stageStatuses[1] !== "idle" || stage1Data.length > 0) && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5" />
-                  Stage 1: Council Responses
-                  {stageStatuses[1] === "complete" && (
-                    <Badge variant="outline" className="ml-2 text-green-600">
-                      Complete
-                    </Badge>
-                  )}
-                </CardTitle>
-                <CardDescription>
-                  Each council member provides their independent response to your question.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
+            <Collapsible open={expandedStages[1]} onOpenChange={() => toggleStage(1)}>
+              <Card>
+                <CollapsibleTrigger asChild>
+                  <CardHeader className="cursor-pointer select-none hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2">
+                        <Sparkles className="h-5 w-5" />
+                        Stage 1: High Table Responses
+                        {stageStatuses[1] === "complete" && (
+                          <Badge variant="outline" className="ml-2 text-green-600">
+                            Complete
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      <ChevronDown
+                        className={cn(
+                          "h-5 w-5 text-muted-foreground transition-transform duration-200",
+                          expandedStages[1] && "rotate-180"
+                        )}
+                      />
+                    </div>
+                    <CardDescription>
+                      Each council member provides their independent response to your question.
+                    </CardDescription>
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent>
                 {(() => {
                   // Get models with streaming content or completed data
                   const streamingModels = Object.entries(modelStatuses[1] || {})
@@ -1084,29 +1266,43 @@ export default function CouncilPage() {
                     </div>
                   )
                 })()}
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
           )}
 
           {/* Stage 2: Peer Evaluation */}
           {(stageStatuses[2] !== "idle" || stage2Data) && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Scale className="h-5 w-5" />
-                  Stage 2: Peer Evaluation
-                  {stageStatuses[2] === "complete" && (
-                    <Badge variant="outline" className="ml-2 text-green-600">
-                      Complete
-                    </Badge>
-                  )}
-                </CardTitle>
-                <CardDescription>
-                  Each model evaluates other responses anonymously (as Response A, B, C).
-                  Model names shown below are de-anonymized for your convenience.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
+            <Collapsible open={expandedStages[2]} onOpenChange={() => toggleStage(2)}>
+              <Card>
+                <CollapsibleTrigger asChild>
+                  <CardHeader className="cursor-pointer select-none hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2">
+                        <Scale className="h-5 w-5" />
+                        Stage 2: Peer Evaluation
+                        {stageStatuses[2] === "complete" && (
+                          <Badge variant="outline" className="ml-2 text-green-600">
+                            Complete
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      <ChevronDown
+                        className={cn(
+                          "h-5 w-5 text-muted-foreground transition-transform duration-200",
+                          expandedStages[2] && "rotate-180"
+                        )}
+                      />
+                    </div>
+                    <CardDescription>
+                      Each model evaluates other responses anonymously (as Response A, B, C).
+                      Model names shown below are de-anonymized for your convenience.
+                    </CardDescription>
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent className="space-y-4">
                 {/* Aggregate Rankings */}
                 {stage2Data?.aggregateRankings && (
                   <div className="rounded-lg border bg-muted/50 p-4">
@@ -1222,29 +1418,43 @@ export default function CouncilPage() {
                     </div>
                   )
                 })()}
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
           )}
 
           {/* Stage 3: Chairman Synthesis */}
           {(stageStatuses[3] !== "idle" || stage3Data) && (
-            <Card className="border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-950/20">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Crown className="h-5 w-5 text-yellow-600" />
-                  Stage 3: Chairman&apos;s Synthesis
-                  {stageStatuses[3] === "complete" && (
-                    <Badge variant="outline" className="ml-2 text-green-600">
-                      Complete
-                    </Badge>
-                  )}
-                </CardTitle>
-                <CardDescription>
-                  {stage3Data?.chairman || "The Chairman"} synthesizes the council&apos;s
-                  collective wisdom into a final answer.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
+            <Collapsible open={expandedStages[3]} onOpenChange={() => toggleStage(3)}>
+              <Card className="border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-950/20">
+                <CollapsibleTrigger asChild>
+                  <CardHeader className="cursor-pointer select-none hover:bg-green-100/50 dark:hover:bg-green-900/30 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2">
+                        <Crown className="h-5 w-5 text-yellow-600" />
+                        Stage 3: Chairman&apos;s Synthesis
+                        {stageStatuses[3] === "complete" && (
+                          <Badge variant="outline" className="ml-2 text-green-600">
+                            Complete
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      <ChevronDown
+                        className={cn(
+                          "h-5 w-5 text-muted-foreground transition-transform duration-200",
+                          expandedStages[3] && "rotate-180"
+                        )}
+                      />
+                    </div>
+                    <CardDescription>
+                      {stage3Data?.chairman || "The Chairman"} synthesizes the council&apos;s
+                      collective wisdom into a final answer.
+                    </CardDescription>
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent>
                 {(() => {
                   // Get streaming synthesis content
                   const streamingSynthesis = modelStatuses[3]?.[CHAIRMAN_MODEL_ID]?.synthesis
@@ -1281,29 +1491,57 @@ export default function CouncilPage() {
                     </div>
                   )
                 })()}
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
           )}
 
-          {/* Empty State */}
+          {/* Empty State - Compact */}
           {currentStage === 0 && !isProcessing && (
-            <div className="flex h-[40vh] flex-col items-center justify-center text-center">
-              <Users className="mb-4 h-16 w-16 text-muted-foreground/50" />
-              <h2 className="text-xl font-semibold">Welcome to the LLM Council</h2>
-              <p className="mt-2 max-w-md text-muted-foreground">
-                Ask a question above to begin the deliberation process. Multiple AI models
-                will collaborate to provide you with the best possible answer.
+            <div className="flex flex-col items-center justify-center text-center py-4">
+              <Users className="mb-3 h-12 w-12 text-muted-foreground/50" />
+              <h2 className="text-lg font-semibold">Welcome to the High Table</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Multiple AI models will deliberate on your question.
               </p>
-              {COUNCIL_MODELS.length > 0 && (
-                <div className="mt-6 flex flex-wrap gap-4">
-                  {COUNCIL_MODELS.map((model) => (
-                    <Badge key={model.id} variant="outline" className="px-3 py-1">
-                      <Sparkles className="mr-1 h-3 w-3" />
-                      {model.name}
-                    </Badge>
+              <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+                {COUNCIL_MODELS.map((model) => (
+                  <Badge key={model.id} variant="outline" className="text-xs px-2 py-0.5">
+                    <Sparkles className="mr-1 h-3 w-3" />
+                    {model.name}
+                  </Badge>
+                ))}
+              </div>
+
+              {/* Example Questions - Compact Grid */}
+              <div className="mt-4 w-full max-w-xl">
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Or try one of these
+                </p>
+                <div className="grid gap-2 grid-cols-2">
+                  {EXAMPLE_QUESTIONS.map((example, index) => (
+                    <button
+                      key={index}
+                      onClick={() => {
+                        if (!activeConversationId) return
+                        updateConversationState(activeConversationId, (prev) => ({
+                          ...prev,
+                          question: example.question,
+                        }))
+                      }}
+                      className="group flex items-start gap-2 rounded-md border bg-card px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                    >
+                      <Badge variant="secondary" className="shrink-0 text-[10px] px-1.5 py-0 mt-0.5">
+                        {example.title}
+                      </Badge>
+                      <span className="text-muted-foreground group-hover:text-accent-foreground">
+                        {example.question}
+                      </span>
+                    </button>
                   ))}
                 </div>
-              )}
+              </div>
             </div>
           )}
         </div>
