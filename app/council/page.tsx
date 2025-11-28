@@ -33,6 +33,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import { MessageResponse } from "@/components/ai-elements/message"
 
 // Types matching the API response
 interface Stage1Response {
@@ -416,7 +417,7 @@ export default function CouncilPage() {
                             <Badge variant="secondary" className="mb-2">
                               {response.label}
                             </Badge>
-                            <p className="whitespace-pre-wrap">{response.content}</p>
+                            <MessageResponse>{response.content}</MessageResponse>
                           </div>
                         </ScrollArea>
                       </TabsContent>
@@ -508,14 +509,16 @@ export default function CouncilPage() {
                         <AccordionContent>
                           <div className="space-y-4 pt-2">
                             <ScrollArea className="h-[200px] rounded-md border p-4">
-                              <p className="whitespace-pre-wrap text-sm">
-                                {stage2Data.labelToModel
-                                  ? deAnonymizeText(
-                                      evaluation.evaluation,
-                                      stage2Data.labelToModel
-                                    )
-                                  : evaluation.evaluation}
-                              </p>
+                              <div className="prose prose-sm max-w-none dark:prose-invert">
+                                <MessageResponse>
+                                  {stage2Data.labelToModel
+                                    ? deAnonymizeText(
+                                        evaluation.evaluation,
+                                        stage2Data.labelToModel
+                                      )
+                                    : evaluation.evaluation}
+                                </MessageResponse>
+                              </div>
                             </ScrollArea>
                             {evaluation.parsedRanking.length > 0 && (
                               <Collapsible>
@@ -592,7 +595,7 @@ export default function CouncilPage() {
                 {stage3Data?.synthesis ? (
                   <ScrollArea className="h-[400px] rounded-md border bg-background p-4">
                     <div className="prose prose-sm max-w-none dark:prose-invert">
-                      <p className="whitespace-pre-wrap">{stage3Data.synthesis}</p>
+                      <MessageResponse>{stage3Data.synthesis}</MessageResponse>
                     </div>
                   </ScrollArea>
                 ) : (
@@ -628,15 +631,19 @@ export default function CouncilPage() {
               <div className="mt-6 flex gap-4">
                 <Badge variant="outline" className="px-3 py-1">
                   <Sparkles className="mr-1 h-3 w-3" />
-                  GPT-4o
+                  GPT-5.1
                 </Badge>
                 <Badge variant="outline" className="px-3 py-1">
                   <Sparkles className="mr-1 h-3 w-3" />
-                  Claude Sonnet
+                  Claude Sonnet 4.5
                 </Badge>
                 <Badge variant="outline" className="px-3 py-1">
                   <Sparkles className="mr-1 h-3 w-3" />
-                  Gemini Pro
+                  Gemini 3 Pro
+                </Badge>
+                <Badge variant="outline" className="px-3 py-1">
+                  <Sparkles className="mr-1 h-3 w-3" />
+                  Grok 4.1 Fast
                 </Badge>
               </div>
             </div>
