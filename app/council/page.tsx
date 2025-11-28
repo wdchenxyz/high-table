@@ -17,6 +17,7 @@ import {
   PanelLeft,
   Trash2,
   ChevronDown,
+  Square,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -671,6 +672,20 @@ export default function CouncilPage() {
     }
   }
 
+  const handleCancel = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    if (processingConversationIdRef.current) {
+      updateConversationState(processingConversationIdRef.current, (prev) => ({
+        ...prev,
+        isProcessing: false,
+      }))
+      processingConversationIdRef.current = null
+    }
+  }
+
   const handleSSEEvent = React.useCallback(
     (conversationId: string, event: string, data: unknown) => {
       switch (event) {
@@ -936,6 +951,54 @@ export default function CouncilPage() {
         <ScrollArea className="flex-1">
           <main className="container py-6">
         <div className="mx-auto max-w-4xl space-y-6">
+          {/* Welcome State - shown when no processing */}
+          {currentStage === 0 && !isProcessing && (
+            <div className="flex flex-col items-center justify-center text-center py-4">
+              <Users className="mb-3 h-12 w-12 text-muted-foreground/50" />
+              <h2 className="text-lg font-semibold">Welcome to the High Table</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Multiple AI models will deliberate on your question.
+              </p>
+              <div className="mt-3 flex flex-wrap justify-center gap-1.5">
+                {COUNCIL_MODELS.map((model) => (
+                  <Badge key={model.id} variant="outline" className="text-xs px-2 py-0.5">
+                    <Sparkles className="mr-1 h-3 w-3" />
+                    {model.name}
+                  </Badge>
+                ))}
+              </div>
+
+              {/* Example Questions - Compact Grid */}
+              <div className="mt-4 w-full max-w-xl">
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Or try one of these
+                </p>
+                <div className="grid gap-2 grid-cols-2">
+                  {EXAMPLE_QUESTIONS.map((example, index) => (
+                    <button
+                      key={index}
+                      onClick={() => {
+                        if (!activeConversationId) return
+                        updateConversationState(activeConversationId, (prev) => ({
+                          ...prev,
+                          question: example.question,
+                        }))
+                      }}
+                      className="group flex items-start gap-2 rounded-md border bg-card px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                    >
+                      <Badge variant="secondary" className="shrink-0 text-[10px] px-1.5 py-0 mt-0.5">
+                        {example.title}
+                      </Badge>
+                      <span className="text-muted-foreground group-hover:text-accent-foreground">
+                        {example.question}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Question Input */}
           <Card>
             <CardHeader>
@@ -970,19 +1033,31 @@ export default function CouncilPage() {
                   <p className="text-sm text-muted-foreground">
                     Press Enter to submit, Shift+Enter for new line
                   </p>
-                  <Button type="submit" disabled={!question.trim() || isProcessing}>
-                    {isProcessing ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="mr-2 h-4 w-4" />
-                        Submit to High Table
-                      </>
+                  <div className="flex gap-2">
+                    {isProcessing && (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        onClick={handleCancel}
+                      >
+                        <Square className="mr-2 h-4 w-4" />
+                        Stop
+                      </Button>
                     )}
-                  </Button>
+                    <Button type="submit" disabled={!question.trim() || isProcessing}>
+                      {isProcessing ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="mr-2 h-4 w-4" />
+                          Submit to High Table
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </form>
             </CardContent>
@@ -1493,53 +1568,6 @@ export default function CouncilPage() {
             </Collapsible>
           )}
 
-          {/* Empty State - Compact */}
-          {currentStage === 0 && !isProcessing && (
-            <div className="flex flex-col items-center justify-center text-center py-4">
-              <Users className="mb-3 h-12 w-12 text-muted-foreground/50" />
-              <h2 className="text-lg font-semibold">Welcome to the High Table</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Multiple AI models will deliberate on your question.
-              </p>
-              <div className="mt-3 flex flex-wrap justify-center gap-1.5">
-                {COUNCIL_MODELS.map((model) => (
-                  <Badge key={model.id} variant="outline" className="text-xs px-2 py-0.5">
-                    <Sparkles className="mr-1 h-3 w-3" />
-                    {model.name}
-                  </Badge>
-                ))}
-              </div>
-
-              {/* Example Questions - Compact Grid */}
-              <div className="mt-4 w-full max-w-xl">
-                <p className="mb-2 text-xs text-muted-foreground">
-                  Or try one of these
-                </p>
-                <div className="grid gap-2 grid-cols-2">
-                  {EXAMPLE_QUESTIONS.map((example, index) => (
-                    <button
-                      key={index}
-                      onClick={() => {
-                        if (!activeConversationId) return
-                        updateConversationState(activeConversationId, (prev) => ({
-                          ...prev,
-                          question: example.question,
-                        }))
-                      }}
-                      className="group flex items-start gap-2 rounded-md border bg-card px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-                    >
-                      <Badge variant="secondary" className="shrink-0 text-[10px] px-1.5 py-0 mt-0.5">
-                        {example.title}
-                      </Badge>
-                      <span className="text-muted-foreground group-hover:text-accent-foreground">
-                        {example.question}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
         </div>
           </main>
         </ScrollArea>
