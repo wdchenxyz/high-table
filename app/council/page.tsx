@@ -87,7 +87,11 @@ export default function CouncilPage() {
     2: "idle",
     3: "idle",
   })
-  const [modelStatuses, setModelStatuses] = React.useState<Record<string, ModelStatus>>({})
+  const [modelStatuses, setModelStatuses] = React.useState<Record<number, Record<string, ModelStatus>>>({
+    1: {},
+    2: {},
+    3: {},
+  })
   const [stage1Data, setStage1Data] = React.useState<Stage1Response[]>([])
   const [stage2Data, setStage2Data] = React.useState<Stage2Data | null>(null)
   const [stage3Data, setStage3Data] = React.useState<Stage3Data | null>(null)
@@ -101,7 +105,7 @@ export default function CouncilPage() {
     setIsProcessing(true)
     setCurrentStage(0)
     setStageStatuses({ 1: "idle", 2: "idle", 3: "idle" })
-    setModelStatuses({})
+    setModelStatuses({ 1: {}, 2: {}, 3: {} })
     setStage1Data([])
     setStage2Data(null)
     setStage3Data(null)
@@ -174,7 +178,7 @@ export default function CouncilPage() {
       }
 
       case "model_status": {
-        const { modelId, status, content, evaluation, parsedRanking, synthesis } =
+        const { stage, modelId, status, content, evaluation, parsedRanking, synthesis } =
           data as {
             stage: number
             modelId: string
@@ -187,12 +191,15 @@ export default function CouncilPage() {
 
         setModelStatuses((prev) => ({
           ...prev,
-          [modelId]: {
-            status,
-            content: content || prev[modelId]?.content,
-            evaluation: evaluation || prev[modelId]?.evaluation,
-            parsedRanking: parsedRanking || prev[modelId]?.parsedRanking,
-            synthesis: synthesis || prev[modelId]?.synthesis,
+          [stage]: {
+            ...prev[stage],
+            [modelId]: {
+              status,
+              content: content || prev[stage]?.[modelId]?.content,
+              evaluation: evaluation || prev[stage]?.[modelId]?.evaluation,
+              parsedRanking: parsedRanking || prev[stage]?.[modelId]?.parsedRanking,
+              synthesis: synthesis || prev[stage]?.[modelId]?.synthesis,
+            },
           },
         }))
         break
@@ -405,7 +412,7 @@ export default function CouncilPage() {
                           value={response.modelId}
                           className="flex items-center gap-2"
                         >
-                          {getStatusIcon(modelStatuses[response.modelId]?.status || "complete")}
+                          {getStatusIcon(modelStatuses[1]?.[response.modelId]?.status || "complete")}
                           {response.modelName}
                         </TabsTrigger>
                       ))}
@@ -425,7 +432,7 @@ export default function CouncilPage() {
                   </Tabs>
                 ) : (
                   <div className="grid gap-4 md:grid-cols-3">
-                    {Object.entries(modelStatuses)
+                    {Object.entries(modelStatuses[1] || {})
                       .filter(([, status]) =>
                         ["generating", "idle"].includes(status.status)
                       )
@@ -552,7 +559,7 @@ export default function CouncilPage() {
                   </Accordion>
                 ) : (
                   <div className="grid gap-4 md:grid-cols-3">
-                    {Object.entries(modelStatuses)
+                    {Object.entries(modelStatuses[2] || {})
                       .filter(([, status]) => status.status === "evaluating")
                       .map(([modelId, status]) => (
                         <Card key={modelId} className="border-dashed">
@@ -602,13 +609,13 @@ export default function CouncilPage() {
                   <Card className="border-dashed">
                     <CardContent className="flex items-center gap-3 pt-6">
                       {getStatusIcon(
-                        modelStatuses["gemini-chairman"]?.status || "synthesizing"
+                        modelStatuses[3]?.["gemini-chairman"]?.status || "synthesizing"
                       )}
                       <div>
                         <p className="font-medium">Chairman</p>
                         <p className="text-sm text-muted-foreground">
                           {getStatusText(
-                            modelStatuses["gemini-chairman"]?.status || "synthesizing"
+                            modelStatuses[3]?.["gemini-chairman"]?.status || "synthesizing"
                           )}
                         </p>
                       </div>
