@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { ComponentProps, ReactNode } from "react";
+import NextImage from "next/image";
 
 export type ModelSelectorProps = ComponentProps<typeof Dialog>;
 
@@ -102,8 +103,8 @@ export const ModelSelectorSeparator = (props: ModelSelectorSeparatorProps) => (
 );
 
 export type ModelSelectorLogoProps = Omit<
-  ComponentProps<"img">,
-  "src" | "alt"
+  ComponentProps<typeof NextImage>,
+  "src" | "alt" | "width" | "height"
 > & {
   provider:
     | "moonshotai-cn"
@@ -163,20 +164,22 @@ export type ModelSelectorLogoProps = Omit<
     | "amazon-bedrock"
     | "cerebras"
     | (string & {});
+  size?: number;
 };
 
 export const ModelSelectorLogo = ({
   provider,
   className,
+  size = 12,
   ...props
 }: ModelSelectorLogoProps) => (
-  <img
+  <NextImage
     {...props}
     alt={`${provider} logo`}
     className={cn("size-3 dark:invert", className)}
-    height={12}
+    height={size}
     src={`https://models.dev/logos/${provider}.svg`}
-    width={12}
+    width={size}
   />
 );
 
@@ -188,7 +191,7 @@ export const ModelSelectorLogoGroup = ({
 }: ModelSelectorLogoGroupProps) => (
   <div
     className={cn(
-      "-space-x-1 flex shrink-0 items-center [&>img]:rounded-full [&>img]:bg-background [&>img]:p-px [&>img]:ring-1 dark:[&>img]:bg-foreground",
+      "-space-x-1 flex shrink-0 items-center [&>span>img]:rounded-full [&>span>img]:bg-background [&>span>img]:p-px [&>span>img]:ring-1 dark:[&>span>img]:bg-foreground",
       className
     )}
     {...props}

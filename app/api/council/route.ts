@@ -1,12 +1,8 @@
-import { generateText, streamText } from "ai"
-import { openai } from "@ai-sdk/openai"
-import { anthropic } from "@ai-sdk/anthropic"
-import { google } from "@ai-sdk/google"
+import { streamText } from "ai"
 import {
   COUNCIL_MODELS,
   CHAIRMAN_MODEL,
   generateLabel,
-  type CouncilModel,
 } from "@/lib/council-config"
 
 export const maxDuration = 120 // 2 minutes for the full council process
@@ -35,24 +31,6 @@ interface CouncilResult {
   stage3: {
     synthesis: string
     chairman: string
-  }
-}
-
-async function queryModel(
-  config: CouncilModel,
-  systemPrompt: string,
-  userPrompt: string
-): Promise<string> {
-  try {
-    const { text } = await generateText({
-      model: `${config.provider}/${config.model}`,
-      system: systemPrompt,
-      prompt: userPrompt,
-    })
-    return text
-  } catch (error) {
-    console.error(`Error querying ${config.name}:`, error)
-    return `[Error: Failed to get response from ${config.name}]`
   }
 }
 
@@ -107,6 +85,17 @@ function calculateAggregateRankings(
   })).sort((a, b) => a.avgRank - b.avgRank)
 }
 
+function shuffleArray<T>(array: T[]): T[] {
+  const result = [...array]
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    const temp = result[i]
+    result[i] = result[j]
+    result[j] = temp
+  }
+  return result
+}
+
 export async function POST(request: Request) {
   const { question } = await request.json()
 
@@ -138,7 +127,7 @@ export async function POST(request: Request) {
       // ============ STAGE 1: Collect Responses ============
       await sendEvent("stage", { stage: 1, status: "started" })
 
-      const stage1Promises = COUNCIL_MODELS.map(async (model, index) => {
+      const stage1Promises = COUNCIL_MODELS.map(async (model) => {
         await sendEvent("model_status", {
           stage: 1,
           modelId: model.id,
@@ -178,11 +167,16 @@ export async function POST(request: Request) {
           modelId: model.id,
           modelName: model.name,
           content: fullContent,
-          label: generateLabel(index),
         }
       })
 
-      const stage1Responses = await Promise.all(stage1Promises)
+      const rawStage1Responses = await Promise.all(stage1Promises)
+      const labelPool = rawStage1Responses.map((_, index) => generateLabel(index))
+      const shuffledLabels = shuffleArray(labelPool)
+      const stage1Responses: Stage1Response[] = rawStage1Responses.map((response, index) => ({
+        ...response,
+        label: shuffledLabels[index],
+      }))
       await sendEvent("stage", { stage: 1, status: "complete", data: stage1Responses })
 
       // ============ STAGE 2: Peer Evaluation ============
@@ -195,7 +189,7 @@ export async function POST(request: Request) {
       })
 
       // Build anonymized responses for evaluation
-      const anonymizedResponses = stage1Responses
+      const anonymizedResponses = shuffleArray(stage1Responses)
         .map((r) => `${r.label}:\n${r.content}`)
         .join("\n\n---\n\n")
 

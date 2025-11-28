@@ -155,20 +155,35 @@ export const InlineCitationCarouselIndex = ({
   ...props
 }: InlineCitationCarouselIndexProps) => {
   const api = useCarouselApi();
-  const [current, setCurrent] = useState(0);
-  const [count, setCount] = useState(0);
+  const [current, setCurrent] = useState(1);
+  const totalSlides = api?.scrollSnapList().length ?? 0;
 
   useEffect(() => {
     if (!api) {
       return;
     }
 
-    setCount(api.scrollSnapList().length);
-    setCurrent(api.selectedScrollSnap() + 1);
+    let rafId: number | null = null;
 
-    api.on("select", () => {
+    const updateCurrent = () => {
       setCurrent(api.selectedScrollSnap() + 1);
-    });
+    };
+
+    const scheduleInitialUpdate = () => {
+      rafId = requestAnimationFrame(updateCurrent);
+    };
+
+    scheduleInitialUpdate();
+    api.on("select", updateCurrent);
+    api.on("reInit", scheduleInitialUpdate);
+
+    return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      api.off("select", updateCurrent);
+      api.off("reInit", scheduleInitialUpdate);
+    };
   }, [api]);
 
   return (
@@ -179,7 +194,7 @@ export const InlineCitationCarouselIndex = ({
       )}
       {...props}
     >
-      {children ?? `${current}/${count}`}
+      {children ?? `${current}/${totalSlides || 1}`}
     </div>
   );
 };
