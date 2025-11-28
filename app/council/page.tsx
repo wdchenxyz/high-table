@@ -25,12 +25,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion"
-import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -111,6 +105,86 @@ interface CouncilResult {
   stageStatuses: Record<number, StageStatus>
 }
 
+interface ConversationState {
+  question: string
+  currentStage: number
+  stageStatuses: Record<number, StageStatus>
+  modelStatuses: Record<number, Record<string, ModelStatus>>
+  stage1Data: Stage1Response[]
+  stage2Data: Stage2Data | null
+  stage3Data: Stage3Data | null
+  isProcessing: boolean
+  error: string | null
+}
+
+const createEmptyConversationState = (): ConversationState => ({
+  question: "",
+  currentStage: 0,
+  stageStatuses: { 1: "idle", 2: "idle", 3: "idle" },
+  modelStatuses: { 1: {}, 2: {}, 3: {} },
+  stage1Data: [],
+  stage2Data: null,
+  stage3Data: null,
+  isProcessing: false,
+  error: null,
+})
+
+const CHAIRMAN_MODEL_ID = "gemini-chairman"
+
+const buildModelStatusesFromResult = (
+  result: CouncilResult
+): Record<number, Record<string, ModelStatus>> => {
+  const statuses: Record<number, Record<string, ModelStatus>> = {
+    1: {},
+    2: {},
+    3: {},
+  }
+
+  for (const response of result.stage1Data) {
+    statuses[1][response.modelId] = {
+      status: "complete",
+      content: response.content,
+    }
+  }
+
+  if (result.stage2Data) {
+    for (const evaluation of result.stage2Data.evaluations) {
+      statuses[2][evaluation.modelId] = {
+        status: "complete",
+        evaluation: evaluation.evaluation,
+        parsedRanking: evaluation.parsedRanking,
+      }
+    }
+  }
+
+  if (result.stage3Data?.synthesis) {
+    statuses[3][CHAIRMAN_MODEL_ID] = {
+      status: "complete",
+      synthesis: result.stage3Data.synthesis,
+    }
+  }
+
+  return statuses
+}
+
+const mapResultToState = (result: CouncilResult): ConversationState => ({
+  ...createEmptyConversationState(),
+  question: result.question,
+  stage1Data: result.stage1Data,
+  stage2Data: result.stage2Data,
+  stage3Data: result.stage3Data,
+  modelStatuses: buildModelStatusesFromResult(result),
+  stageStatuses: result.stageStatuses,
+  currentStage:
+    result.stageStatuses[3] === "complete"
+      ? 3
+      : result.stageStatuses[2] === "complete"
+        ? 2
+        : result.stageStatuses[1] === "complete"
+          ? 1
+          : 0,
+})
+
 // Active conversation ID stored in localStorage
 const ACTIVE_COUNCIL_KEY = "council-active-conversation"
 
@@ -190,24 +264,69 @@ export default function CouncilPage() {
   // Track which conversation is currently processing
   const processingConversationIdRef = React.useRef<string | null>(null)
 
-  // Council deliberation state
-  const [question, setQuestion] = React.useState("")
-  const [isProcessing, setIsProcessing] = React.useState(false)
-  const [currentStage, setCurrentStage] = React.useState(0)
-  const [stageStatuses, setStageStatuses] = React.useState<Record<number, StageStatus>>({
-    1: "idle",
-    2: "idle",
-    3: "idle",
-  })
-  const [modelStatuses, setModelStatuses] = React.useState<Record<number, Record<string, ModelStatus>>>({
-    1: {},
-    2: {},
-    3: {},
-  })
-  const [stage1Data, setStage1Data] = React.useState<Stage1Response[]>([])
-  const [stage2Data, setStage2Data] = React.useState<Stage2Data | null>(null)
-  const [stage3Data, setStage3Data] = React.useState<Stage3Data | null>(null)
-  const [error, setError] = React.useState<string | null>(null)
+  // Per-conversation deliberation state
+  const [conversationStates, setConversationStates] = React.useState<Record<string, ConversationState>>({})
+  const savedResultsRef = React.useRef<Record<string, boolean>>({})
+
+  const ensureConversationState = React.useCallback(
+    (id: string, overrides?: Partial<ConversationState>) => {
+      setConversationStates((prev) => {
+        if (prev[id]) return prev
+        return {
+          ...prev,
+          [id]: { ...createEmptyConversationState(), ...overrides },
+        }
+      })
+    },
+    []
+  )
+
+  const updateConversationState = React.useCallback(
+    (id: string, updater: (prev: ConversationState) => ConversationState) => {
+      setConversationStates((prev) => {
+        const previous = prev[id] ?? createEmptyConversationState()
+        return {
+          ...prev,
+          [id]: updater(previous),
+        }
+      })
+    },
+    []
+  )
+
+  const resetConversationState = React.useCallback(
+    (id: string, options?: { keepQuestion?: boolean }) => {
+      setConversationStates((prev) => {
+        const previous = prev[id]
+        const nextQuestion = options?.keepQuestion ? previous?.question ?? "" : ""
+        return {
+          ...prev,
+          [id]: {
+            ...createEmptyConversationState(),
+            question: nextQuestion,
+          },
+        }
+      })
+      savedResultsRef.current[id] = false
+    },
+    []
+  )
+
+  const loadConversationState = React.useCallback(
+    async (id: string) => {
+      const result = await fetchResult(id)
+      if (result) {
+        setConversationStates((prev) => ({
+          ...prev,
+          [id]: mapResultToState(result),
+        }))
+        savedResultsRef.current[id] = true
+      } else {
+        ensureConversationState(id)
+      }
+    },
+    [ensureConversationState]
+  )
 
   // Initialize conversations from server
   React.useEffect(() => {
@@ -234,37 +353,53 @@ export default function CouncilPage() {
       setActiveConversationId(currentId)
 
       // Load result for current conversation
-      const result = await fetchResult(currentId)
-      if (result) {
-        setQuestion(result.question)
-        setStage1Data(result.stage1Data)
-        setStage2Data(result.stage2Data)
-        setStage3Data(result.stage3Data)
-        setStageStatuses(result.stageStatuses)
-        setCurrentStage(result.stageStatuses[3] === "complete" ? 3 :
-                       result.stageStatuses[2] === "complete" ? 2 :
-                       result.stageStatuses[1] === "complete" ? 1 : 0)
-      }
+      await loadConversationState(currentId)
 
       setIsLoaded(true)
     }
 
     loadData()
-  }, [])
+  }, [ensureConversationState, loadConversationState])
 
-  // Save result when deliberation completes
   React.useEffect(() => {
-    if (activeConversationId && stageStatuses[3] === "complete" && stage3Data) {
-      const result: CouncilResult = {
-        question,
-        stage1Data,
-        stage2Data,
-        stage3Data,
-        stageStatuses,
-      }
-      saveResultToServer(activeConversationId, result)
+    if (activeConversationId) {
+      ensureConversationState(activeConversationId)
     }
-  }, [activeConversationId, stageStatuses, stage3Data, question, stage1Data, stage2Data])
+  }, [activeConversationId, ensureConversationState])
+
+  React.useEffect(() => {
+    for (const [conversationId, state] of Object.entries(conversationStates)) {
+      if (
+        state.stageStatuses[3] === "complete" &&
+        state.stage3Data &&
+        !savedResultsRef.current[conversationId]
+      ) {
+        savedResultsRef.current[conversationId] = true
+        const result: CouncilResult = {
+          question: state.question,
+          stage1Data: state.stage1Data,
+          stage2Data: state.stage2Data,
+          stage3Data: state.stage3Data,
+          stageStatuses: state.stageStatuses,
+        }
+        void saveResultToServer(conversationId, result)
+      }
+    }
+  }, [conversationStates])
+
+  const activeConversationState =
+    conversationStates[activeConversationId] ?? createEmptyConversationState()
+  const {
+    question,
+    isProcessing,
+    currentStage,
+    stageStatuses,
+    modelStatuses,
+    stage1Data,
+    stage2Data,
+    stage3Data,
+    error,
+  } = activeConversationState
 
   // Update conversation title when question is submitted
   const updateConversationTitle = React.useCallback((id: string, content: string) => {
@@ -283,65 +418,20 @@ export default function CouncilPage() {
     })
   }, [])
 
-  // Reset state for new/switched conversation
-  const resetDeliberationState = () => {
-    setQuestion("")
-    setIsProcessing(false)
-    setCurrentStage(0)
-    setStageStatuses({ 1: "idle", 2: "idle", 3: "idle" })
-    setModelStatuses({ 1: {}, 2: {}, 3: {} })
-    setStage1Data([])
-    setStage2Data(null)
-    setStage3Data(null)
-    setError(null)
-  }
-
   // Switch conversation
   const switchConversation = async (id: string) => {
     if (id === activeConversationId) return
 
-    // If switching back to the processing conversation, just update active ID
-    // Don't reset state - the streaming is still populating it
-    if (id === processingConversationIdRef.current) {
-      setActiveConversationId(id)
-      saveActiveConversationId(id)
-      return
-    }
-
-    // Abort any ongoing deliberation when switching to a different conversation
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-      abortControllerRef.current = null
-      processingConversationIdRef.current = null
-    }
-
     setActiveConversationId(id)
     saveActiveConversationId(id)
 
-    // Reset and load new conversation's result
-    resetDeliberationState()
-    const result = await fetchResult(id)
-    if (result) {
-      setQuestion(result.question)
-      setStage1Data(result.stage1Data)
-      setStage2Data(result.stage2Data)
-      setStage3Data(result.stage3Data)
-      setStageStatuses(result.stageStatuses)
-      setCurrentStage(result.stageStatuses[3] === "complete" ? 3 :
-                     result.stageStatuses[2] === "complete" ? 2 :
-                     result.stageStatuses[1] === "complete" ? 1 : 0)
+    if (!conversationStates[id]) {
+      await loadConversationState(id)
     }
   }
 
   // Create new conversation
   const createConversation = async () => {
-    // Abort any ongoing deliberation
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-      abortControllerRef.current = null
-      processingConversationIdRef.current = null
-    }
-
     const newConversation: StoredConversation = {
       id: Date.now().toString(),
       title: "New deliberation",
@@ -352,13 +442,26 @@ export default function CouncilPage() {
     await saveConversationsToServer(updated)
     setActiveConversationId(newConversation.id)
     saveActiveConversationId(newConversation.id)
-    resetDeliberationState()
+    resetConversationState(newConversation.id, { keepQuestion: false })
   }
 
   // Delete conversation
   const deleteConversation = async (id: string) => {
     const filtered = conversations.filter((c) => c.id !== id)
     await deleteResultFromServer(id)
+
+    setConversationStates((prev) => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+    delete savedResultsRef.current[id]
+
+    if (processingConversationIdRef.current === id && abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+      processingConversationIdRef.current = null
+    }
 
     if (filtered.length === 0) {
       const newDefault: StoredConversation = {
@@ -370,7 +473,7 @@ export default function CouncilPage() {
       await saveConversationsToServer([newDefault])
       setActiveConversationId(newDefault.id)
       saveActiveConversationId(newDefault.id)
-      resetDeliberationState()
+      resetConversationState(newDefault.id, { keepQuestion: false })
     } else {
       setConversations(filtered)
       await saveConversationsToServer(filtered)
@@ -378,17 +481,8 @@ export default function CouncilPage() {
         const nextId = filtered[0].id
         setActiveConversationId(nextId)
         saveActiveConversationId(nextId)
-        resetDeliberationState()
-        const result = await fetchResult(nextId)
-        if (result) {
-          setQuestion(result.question)
-          setStage1Data(result.stage1Data)
-          setStage2Data(result.stage2Data)
-          setStage3Data(result.stage3Data)
-          setStageStatuses(result.stageStatuses)
-          setCurrentStage(result.stageStatuses[3] === "complete" ? 3 :
-                         result.stageStatuses[2] === "complete" ? 2 :
-                         result.stageStatuses[1] === "complete" ? 1 : 0)
+        if (!conversationStates[nextId]) {
+          await loadConversationState(nextId)
         }
       }
     }
@@ -396,31 +490,49 @@ export default function CouncilPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!question.trim() || isProcessing) return
+    if (!activeConversationId) return
 
-    // Update conversation title
-    updateConversationTitle(activeConversationId, question.trim())
+    const conversationId = activeConversationId
+    const currentState = conversationStates[conversationId] ?? createEmptyConversationState()
+    const trimmedQuestion = currentState.question.trim()
 
-    // Create abort controller for this request
+    if (!trimmedQuestion || currentState.isProcessing) return
+
+    if (
+      processingConversationIdRef.current &&
+      processingConversationIdRef.current !== conversationId
+    ) {
+      updateConversationState(conversationId, (prev) => ({
+        ...prev,
+        error: "Another deliberation is currently running. Please wait for it to finish.",
+      }))
+      return
+    }
+
+    updateConversationTitle(conversationId, trimmedQuestion)
+
     const abortController = new AbortController()
     abortControllerRef.current = abortController
-    processingConversationIdRef.current = activeConversationId
+    processingConversationIdRef.current = conversationId
 
-    // Reset state
-    setIsProcessing(true)
-    setCurrentStage(0)
-    setStageStatuses({ 1: "idle", 2: "idle", 3: "idle" })
-    setModelStatuses({ 1: {}, 2: {}, 3: {} })
-    setStage1Data([])
-    setStage2Data(null)
-    setStage3Data(null)
-    setError(null)
+    updateConversationState(conversationId, (prev) => ({
+      ...prev,
+      isProcessing: true,
+      currentStage: 0,
+      stageStatuses: { 1: "idle", 2: "idle", 3: "idle" },
+      modelStatuses: { 1: {}, 2: {}, 3: {} },
+      stage1Data: [],
+      stage2Data: null,
+      stage3Data: null,
+      error: null,
+    }))
+    savedResultsRef.current[conversationId] = false
 
     try {
       const response = await fetch("/api/council", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: question.trim() }),
+        body: JSON.stringify({ question: trimmedQuestion }),
         signal: abortController.signal,
       })
 
@@ -448,125 +560,159 @@ export default function CouncilPage() {
             currentEvent = line.slice(7)
           } else if (line.startsWith("data: ") && currentEvent) {
             const data = JSON.parse(line.slice(6))
-            handleSSEEvent(currentEvent, data)
+            handleSSEEvent(conversationId, currentEvent, data)
             currentEvent = ""
           }
         }
       }
     } catch (err) {
-      // Don't show error if request was aborted (user switched conversations)
       if (err instanceof Error && err.name === "AbortError") {
         return
       }
-      setError(err instanceof Error ? err.message : "An error occurred")
+      updateConversationState(conversationId, (prev) => ({
+        ...prev,
+        error: err instanceof Error ? err.message : "An error occurred",
+      }))
     } finally {
-      setIsProcessing(false)
-      abortControllerRef.current = null
-      processingConversationIdRef.current = null
+      updateConversationState(conversationId, (prev) => ({
+        ...prev,
+        isProcessing: false,
+      }))
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null
+      }
+      if (processingConversationIdRef.current === conversationId) {
+        processingConversationIdRef.current = null
+      }
     }
   }
 
-  const handleSSEEvent = (event: string, data: unknown) => {
-    switch (event) {
-      case "stage": {
-        const { stage, status, data: stageData } = data as {
-          stage: number
-          status: StageStatus
-          data?: unknown
-        }
-        setCurrentStage(stage)
-        setStageStatuses((prev) => ({ ...prev, [stage]: status }))
-
-        if (status === "complete") {
-          if (stage === 1 && stageData) {
-            setStage1Data(stageData as Stage1Response[])
-          } else if (stage === 2 && stageData) {
-            setStage2Data(stageData as Stage2Data)
-          } else if (stage === 3 && stageData) {
-            setStage3Data(stageData as Stage3Data)
+  const handleSSEEvent = React.useCallback(
+    (conversationId: string, event: string, data: unknown) => {
+      switch (event) {
+        case "stage": {
+          const { stage, status, data: stageData } = data as {
+            stage: number
+            status: StageStatus
+            data?: unknown
           }
-        }
-        break
-      }
+          updateConversationState(conversationId, (prev) => {
+            const updated: ConversationState = {
+              ...prev,
+              currentStage: stage,
+              stageStatuses: { ...prev.stageStatuses, [stage]: status },
+            }
 
-      case "model_status": {
-        const { stage, modelId, status, content, evaluation, parsedRanking, synthesis } =
-          data as {
+            if (status === "complete" && stageData) {
+              if (stage === 1) {
+                updated.stage1Data = stageData as Stage1Response[]
+              } else if (stage === 2) {
+                updated.stage2Data = stageData as Stage2Data
+              } else if (stage === 3) {
+                updated.stage3Data = stageData as Stage3Data
+              }
+            }
+
+            return updated
+          })
+          break
+        }
+
+        case "model_status": {
+          const { stage, modelId, status, content, evaluation, parsedRanking, synthesis } =
+            data as {
+              stage: number
+              modelId: string
+              status: ModelStatus["status"]
+              content?: string
+              evaluation?: string
+              parsedRanking?: string[]
+              synthesis?: string
+            }
+
+          updateConversationState(conversationId, (prev) => {
+            const stageStatuses = prev.modelStatuses[stage] || {}
+            const previousStatus = stageStatuses[modelId] || {}
+
+            return {
+              ...prev,
+              modelStatuses: {
+                ...prev.modelStatuses,
+                [stage]: {
+                  ...stageStatuses,
+                  [modelId]: {
+                    ...previousStatus,
+                    status,
+                    content: content ?? previousStatus.content,
+                    evaluation: evaluation ?? previousStatus.evaluation,
+                    parsedRanking: parsedRanking ?? previousStatus.parsedRanking,
+                    synthesis: synthesis ?? previousStatus.synthesis,
+                  },
+                },
+              },
+            }
+          })
+          break
+        }
+
+        case "model_chunk": {
+          const { stage, modelId, chunk } = data as {
             stage: number
             modelId: string
-            status: ModelStatus["status"]
-            content?: string
-            evaluation?: string
-            parsedRanking?: string[]
-            synthesis?: string
+            chunk: string
           }
 
-        setModelStatuses((prev) => ({
-          ...prev,
-          [stage]: {
-            ...prev[stage],
-            [modelId]: {
-              status,
-              content: content || prev[stage]?.[modelId]?.content,
-              evaluation: evaluation || prev[stage]?.[modelId]?.evaluation,
-              parsedRanking: parsedRanking || prev[stage]?.[modelId]?.parsedRanking,
-              synthesis: synthesis || prev[stage]?.[modelId]?.synthesis,
-            },
-          },
-        }))
-        break
-      }
+          updateConversationState(conversationId, (prev) => {
+            const stageStatuses = prev.modelStatuses[stage] || {}
+            const currentStatus = stageStatuses[modelId] || {}
 
-      case "model_chunk": {
-        const { stage, modelId, chunk } = data as {
-          stage: number
-          modelId: string
-          chunk: string
+            let updates: Partial<ModelStatus> = {}
+            if (stage === 1) {
+              updates = {
+                status: currentStatus.status || "generating",
+                content: (currentStatus.content || "") + chunk,
+              }
+            } else if (stage === 2) {
+              updates = {
+                status: currentStatus.status || "evaluating",
+                evaluation: (currentStatus.evaluation || "") + chunk,
+              }
+            } else if (stage === 3) {
+              updates = {
+                status: currentStatus.status || "synthesizing",
+                synthesis: (currentStatus.synthesis || "") + chunk,
+              }
+            }
+
+            return {
+              ...prev,
+              modelStatuses: {
+                ...prev.modelStatuses,
+                [stage]: {
+                  ...stageStatuses,
+                  [modelId]: {
+                    ...currentStatus,
+                    ...updates,
+                  },
+                },
+              },
+            }
+          })
+          break
         }
 
-        setModelStatuses((prev) => {
-          const currentStatus = prev[stage]?.[modelId] || {}
-
-          // Determine which field to update based on stage
-          let updates: Partial<ModelStatus> = {}
-          if (stage === 1) {
-            updates = {
-              status: currentStatus.status || "generating",
-              content: (currentStatus.content || "") + chunk,
-            }
-          } else if (stage === 2) {
-            updates = {
-              status: currentStatus.status || "evaluating",
-              evaluation: (currentStatus.evaluation || "") + chunk,
-            }
-          } else if (stage === 3) {
-            updates = {
-              status: currentStatus.status || "synthesizing",
-              synthesis: (currentStatus.synthesis || "") + chunk,
-            }
-          }
-
-          return {
+        case "error": {
+          const { message } = data as { message: string }
+          updateConversationState(conversationId, (prev) => ({
             ...prev,
-            [stage]: {
-              ...prev[stage],
-              [modelId]: {
-                ...currentStatus,
-                ...updates,
-              },
-            },
-          }
-        })
-        break
+            error: message,
+          }))
+          break
+        }
       }
-
-      case "error": {
-        const { message } = data as { message: string }
-        setError(message)
-        break
-      }
-    }
-  }
+    },
+    [updateConversationState]
+  )
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -597,23 +743,6 @@ export default function CouncilPage() {
         return <Circle className="h-4 w-4 text-red-500" />
       default:
         return <Circle className="h-4 w-4 text-muted-foreground" />
-    }
-  }
-
-  const getStatusText = (status: ModelStatus["status"]) => {
-    switch (status) {
-      case "generating":
-        return "Generating response..."
-      case "evaluating":
-        return "Evaluating peers..."
-      case "synthesizing":
-        return "Synthesizing..."
-      case "complete":
-        return "Complete"
-      case "error":
-        return "Error"
-      default:
-        return "Waiting"
     }
   }
 
@@ -737,7 +866,14 @@ export default function CouncilPage() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <Textarea
                   value={question}
-                  onChange={(e) => setQuestion(e.target.value)}
+                  onChange={(e) => {
+                    if (!activeConversationId) return
+                    const value = e.target.value
+                    updateConversationState(activeConversationId, (prev) => ({
+                      ...prev,
+                      question: value,
+                    }))
+                  }}
                   onKeyDown={handleKeyDown}
                   placeholder="What would you like the council to discuss?"
                   className="min-h-[100px] resize-none"
@@ -1055,9 +1191,10 @@ export default function CouncilPage() {
               <CardContent>
                 {(() => {
                   // Get streaming synthesis content
-                  const streamingSynthesis = modelStatuses[3]?.["gemini-chairman"]?.synthesis
+                  const streamingSynthesis = modelStatuses[3]?.[CHAIRMAN_MODEL_ID]?.synthesis
                   const synthesis = stage3Data?.synthesis || streamingSynthesis
-                  const chairmanStatus = modelStatuses[3]?.["gemini-chairman"]?.status || "synthesizing"
+                  const chairmanStatus =
+                    modelStatuses[3]?.[CHAIRMAN_MODEL_ID]?.status || "synthesizing"
 
                   if (synthesis) {
                     return (
