@@ -123,9 +123,13 @@ export async function POST(request: Request) {
   const writer = stream.writable.getWriter()
 
   const sendEvent = async (event: string, data: unknown) => {
-    await writer.write(
-      encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-    )
+    try {
+      await writer.write(
+        encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+      )
+    } catch {
+      // Stream was closed (client disconnected), ignore
+    }
   }
 
   // Process the council in the background
@@ -376,7 +380,11 @@ Begin your synthesis:`
         message: error instanceof Error ? error.message : "Unknown error occurred",
       })
     } finally {
-      await writer.close()
+      try {
+        await writer.close()
+      } catch {
+        // Stream already closed (client disconnected), ignore
+      }
     }
   })()
 

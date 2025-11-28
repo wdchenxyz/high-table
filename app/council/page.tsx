@@ -185,6 +185,11 @@ export default function CouncilPage() {
   const [activeConversationId, setActiveConversationId] = React.useState<string>("")
   const [isLoaded, setIsLoaded] = React.useState(false)
 
+  // Ref to track abort controller for canceling ongoing requests
+  const abortControllerRef = React.useRef<AbortController | null>(null)
+  // Track which conversation is currently processing
+  const processingConversationIdRef = React.useRef<string | null>(null)
+
   // Council deliberation state
   const [question, setQuestion] = React.useState("")
   const [isProcessing, setIsProcessing] = React.useState(false)
@@ -295,6 +300,21 @@ export default function CouncilPage() {
   const switchConversation = async (id: string) => {
     if (id === activeConversationId) return
 
+    // If switching back to the processing conversation, just update active ID
+    // Don't reset state - the streaming is still populating it
+    if (id === processingConversationIdRef.current) {
+      setActiveConversationId(id)
+      saveActiveConversationId(id)
+      return
+    }
+
+    // Abort any ongoing deliberation when switching to a different conversation
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+      processingConversationIdRef.current = null
+    }
+
     setActiveConversationId(id)
     saveActiveConversationId(id)
 
@@ -315,6 +335,13 @@ export default function CouncilPage() {
 
   // Create new conversation
   const createConversation = async () => {
+    // Abort any ongoing deliberation
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+      processingConversationIdRef.current = null
+    }
+
     const newConversation: StoredConversation = {
       id: Date.now().toString(),
       title: "New deliberation",
@@ -374,6 +401,11 @@ export default function CouncilPage() {
     // Update conversation title
     updateConversationTitle(activeConversationId, question.trim())
 
+    // Create abort controller for this request
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+    processingConversationIdRef.current = activeConversationId
+
     // Reset state
     setIsProcessing(true)
     setCurrentStage(0)
@@ -389,6 +421,7 @@ export default function CouncilPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: question.trim() }),
+        signal: abortController.signal,
       })
 
       if (!response.ok) {
@@ -421,9 +454,15 @@ export default function CouncilPage() {
         }
       }
     } catch (err) {
+      // Don't show error if request was aborted (user switched conversations)
+      if (err instanceof Error && err.name === "AbortError") {
+        return
+      }
       setError(err instanceof Error ? err.message : "An error occurred")
     } finally {
       setIsProcessing(false)
+      abortControllerRef.current = null
+      processingConversationIdRef.current = null
     }
   }
 
