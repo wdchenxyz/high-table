@@ -41,6 +41,7 @@ interface StoredConversation {
 
 const CONVERSATIONS_KEY = "chat-conversations"
 const ACTIVE_CONVERSATION_KEY = "chat-active-conversation"
+const MESSAGES_KEY_PREFIX = "chat-messages-"
 
 function getStoredConversations(): StoredConversation[] {
   if (typeof window === "undefined") return []
@@ -68,6 +69,28 @@ function saveActiveConversationId(id: string) {
   localStorage.setItem(ACTIVE_CONVERSATION_KEY, id)
 }
 
+// Message persistence helpers
+function getStoredMessages(conversationId: string) {
+  if (typeof window === "undefined") return []
+  const stored = localStorage.getItem(MESSAGES_KEY_PREFIX + conversationId)
+  if (stored) {
+    try {
+      return JSON.parse(stored)
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
+function saveMessages(conversationId: string, messages: unknown[]) {
+  localStorage.setItem(MESSAGES_KEY_PREFIX + conversationId, JSON.stringify(messages))
+}
+
+function deleteMessages(conversationId: string) {
+  localStorage.removeItem(MESSAGES_KEY_PREFIX + conversationId)
+}
+
 export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = React.useState(true)
   const [conversations, setConversations] = React.useState<StoredConversation[]>([])
@@ -75,28 +98,8 @@ export default function ChatPage() {
   const [isLoaded, setIsLoaded] = React.useState(false)
   const [input, setInput] = React.useState("")
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
-
-  // Initialize from localStorage
-  React.useEffect(() => {
-    const stored = getStoredConversations()
-    const activeId = getActiveConversationId()
-
-    if (stored.length === 0) {
-      const defaultConversation: StoredConversation = {
-        id: "default",
-        title: "New conversation",
-        createdAt: new Date().toISOString(),
-      }
-      setConversations([defaultConversation])
-      setActiveConversationId(defaultConversation.id)
-      saveConversations([defaultConversation])
-      saveActiveConversationId(defaultConversation.id)
-    } else {
-      setConversations(stored)
-      setActiveConversationId(activeId || stored[0].id)
-    }
-    setIsLoaded(true)
-  }, [])
+  const prevStatusRef = React.useRef<string>("")
+  const initialLoadDoneRef = React.useRef(false)
 
   // Use the AI SDK useChat hook
   const {
@@ -111,7 +114,57 @@ export default function ChatPage() {
     }),
   })
 
+  // Initialize from localStorage
+  React.useEffect(() => {
+    const stored = getStoredConversations()
+    const activeId = getActiveConversationId()
+
+    let currentId: string
+    if (stored.length === 0) {
+      const defaultConversation: StoredConversation = {
+        id: "default",
+        title: "New conversation",
+        createdAt: new Date().toISOString(),
+      }
+      setConversations([defaultConversation])
+      currentId = defaultConversation.id
+      saveConversations([defaultConversation])
+      saveActiveConversationId(defaultConversation.id)
+    } else {
+      setConversations(stored)
+      currentId = activeId || stored[0].id
+    }
+
+    setActiveConversationId(currentId)
+    setIsLoaded(true)
+  }, [])
+
+  // Load stored messages after initial load
+  React.useEffect(() => {
+    if (isLoaded && activeConversationId && !initialLoadDoneRef.current) {
+      const storedMessages = getStoredMessages(activeConversationId)
+      if (storedMessages.length > 0) {
+        setMessages(storedMessages)
+      }
+      initialLoadDoneRef.current = true
+    }
+  }, [isLoaded, activeConversationId, setMessages])
+
   const isLoading = status === "streaming" || status === "submitted"
+
+  // Save messages to localStorage when streaming completes
+  React.useEffect(() => {
+    // Save when status changes from streaming/submitted to ready
+    if (
+      prevStatusRef.current === "streaming" &&
+      status === "ready" &&
+      activeConversationId &&
+      messages.length > 0
+    ) {
+      saveMessages(activeConversationId, messages)
+    }
+    prevStatusRef.current = status
+  }, [status, activeConversationId, messages])
 
   // Update conversation title
   const updateConversationTitle = React.useCallback((id: string, content: string) => {
@@ -150,13 +203,26 @@ export default function ChatPage() {
 
   // Switch conversation
   const switchConversation = (id: string) => {
+    // Save current messages before switching
+    if (activeConversationId && messages.length > 0) {
+      saveMessages(activeConversationId, messages)
+    }
+
     setActiveConversationId(id)
     saveActiveConversationId(id)
-    setMessages([])
+
+    // Load messages for the new conversation
+    const storedMessages = getStoredMessages(id)
+    setMessages(storedMessages)
   }
 
   // Create new conversation
   const createConversation = () => {
+    // Save current messages before switching
+    if (activeConversationId && messages.length > 0) {
+      saveMessages(activeConversationId, messages)
+    }
+
     const newConversation: StoredConversation = {
       id: Date.now().toString(),
       title: "New conversation",
@@ -173,6 +239,8 @@ export default function ChatPage() {
   // Delete conversation
   const deleteConversation = (id: string) => {
     const filtered = conversations.filter((c) => c.id !== id)
+    // Delete the messages for this conversation
+    deleteMessages(id)
 
     if (filtered.length === 0) {
       const newDefault: StoredConversation = {
@@ -189,9 +257,12 @@ export default function ChatPage() {
       setConversations(filtered)
       saveConversations(filtered)
       if (activeConversationId === id) {
-        setActiveConversationId(filtered[0].id)
-        saveActiveConversationId(filtered[0].id)
-        setMessages([])
+        const nextId = filtered[0].id
+        setActiveConversationId(nextId)
+        saveActiveConversationId(nextId)
+        // Load messages for the next conversation
+        const storedMessages = getStoredMessages(nextId)
+        setMessages(storedMessages)
       }
     }
   }
