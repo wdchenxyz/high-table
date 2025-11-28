@@ -876,29 +876,25 @@ export default function CouncilPage() {
           <SidebarGroup>
             <SidebarGroupLabel>Deliberations</SidebarGroupLabel>
             <SidebarGroupContent>
-              <ScrollArea className="h-[calc(100vh-180px)]">
-                <SidebarMenu>
-                  {conversations.map((conversation) => (
-                    <SidebarMenuItem key={conversation.id} className="group">
-                      <SidebarMenuButton
-                        isActive={conversation.id === activeConversationId}
-                        onClick={() => switchConversation(conversation.id)}
-                      >
-                        <Users className="h-4 w-4 shrink-0" />
-                        <span className="truncate">{conversation.title}</span>
-                      </SidebarMenuButton>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 opacity-0 group-hover:opacity-100"
-                        onClick={() => deleteConversation(conversation.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </ScrollArea>
+              <SidebarMenu>
+                {conversations.map((conversation) => (
+                  <SidebarMenuItem key={conversation.id}>
+                    <SidebarMenuButton
+                      isActive={conversation.id === activeConversationId}
+                      onClick={() => switchConversation(conversation.id)}
+                    >
+                      <Users className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{conversation.title}</span>
+                    </SidebarMenuButton>
+                    <SidebarMenuAction
+                      onClick={() => deleteConversation(conversation.id)}
+                      showOnHover
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </SidebarMenuAction>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
