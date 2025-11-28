@@ -47,7 +47,7 @@ import {
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { MessageResponse } from "@/components/ai-elements/message"
-import { COUNCIL_MODELS } from "@/lib/council-config"
+import { COUNCIL_MODELS, CHAIRMAN_MODEL } from "@/lib/council-config"
 
 // Types matching the API response
 interface Stage1Response {
@@ -131,7 +131,7 @@ const createEmptyConversationState = (): ConversationState => ({
   error: null,
 })
 
-const CHAIRMAN_MODEL_ID = "gemini-chairman"
+const CHAIRMAN_MODEL_ID = CHAIRMAN_MODEL.id
 
 interface CopyResponseButtonProps {
   text: string
@@ -1294,24 +1294,16 @@ export default function CouncilPage() {
                 Ask a question above to begin the deliberation process. Multiple AI models
                 will collaborate to provide you with the best possible answer.
               </p>
-              <div className="mt-6 flex gap-4">
-                <Badge variant="outline" className="px-3 py-1">
-                  <Sparkles className="mr-1 h-3 w-3" />
-                  GPT-5.1
-                </Badge>
-                <Badge variant="outline" className="px-3 py-1">
-                  <Sparkles className="mr-1 h-3 w-3" />
-                  Claude Sonnet 4.5
-                </Badge>
-                <Badge variant="outline" className="px-3 py-1">
-                  <Sparkles className="mr-1 h-3 w-3" />
-                  Gemini 3 Pro
-                </Badge>
-                <Badge variant="outline" className="px-3 py-1">
-                  <Sparkles className="mr-1 h-3 w-3" />
-                  Grok 4.1 Fast
-                </Badge>
-              </div>
+              {COUNCIL_MODELS.length > 0 && (
+                <div className="mt-6 flex flex-wrap gap-4">
+                  {COUNCIL_MODELS.map((model) => (
+                    <Badge key={model.id} variant="outline" className="px-3 py-1">
+                      <Sparkles className="mr-1 h-3 w-3" />
+                      {model.name}
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
