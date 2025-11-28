@@ -158,30 +158,24 @@ export default function ChatPage() {
               <ScrollArea className="h-[calc(100vh-180px)]">
                 <SidebarMenu>
                   {conversations.map((conversation) => (
-                    <SidebarMenuItem key={conversation.id}>
+                    <SidebarMenuItem key={conversation.id} className="group">
                       <SidebarMenuButton
                         isActive={conversation.id === activeConversationId}
                         onClick={() =>
                           setActiveConversationId(conversation.id)
                         }
-                        className="group justify-between"
                       >
-                        <div className="flex items-center gap-2 truncate">
-                          <MessageSquare className="h-4 w-4 shrink-0" />
-                          <span className="truncate">{conversation.title}</span>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDeleteConversation(conversation.id)
-                          }}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                        <MessageSquare className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{conversation.title}</span>
                       </SidebarMenuButton>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-1 top-1/2 h-6 w-6 -translate-y-1/2 opacity-0 group-hover:opacity-100"
+                        onClick={() => handleDeleteConversation(conversation.id)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
                     </SidebarMenuItem>
                   ))}
                 </SidebarMenu>
