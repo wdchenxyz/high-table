@@ -39,26 +39,8 @@ interface StoredConversation {
   createdAt: string
 }
 
-const CONVERSATIONS_KEY = "chat-conversations"
+// Active conversation ID is kept in localStorage for quick access
 const ACTIVE_CONVERSATION_KEY = "chat-active-conversation"
-const MESSAGES_KEY_PREFIX = "chat-messages-"
-
-function getStoredConversations(): StoredConversation[] {
-  if (typeof window === "undefined") return []
-  const stored = localStorage.getItem(CONVERSATIONS_KEY)
-  if (stored) {
-    try {
-      return JSON.parse(stored)
-    } catch {
-      return []
-    }
-  }
-  return []
-}
-
-function saveConversations(conversations: StoredConversation[]) {
-  localStorage.setItem(CONVERSATIONS_KEY, JSON.stringify(conversations))
-}
 
 function getActiveConversationId(): string {
   if (typeof window === "undefined") return ""
@@ -69,26 +51,59 @@ function saveActiveConversationId(id: string) {
   localStorage.setItem(ACTIVE_CONVERSATION_KEY, id)
 }
 
-// Message persistence helpers
-function getStoredMessages(conversationId: string) {
-  if (typeof window === "undefined") return []
-  const stored = localStorage.getItem(MESSAGES_KEY_PREFIX + conversationId)
-  if (stored) {
-    try {
-      return JSON.parse(stored)
-    } catch {
-      return []
-    }
+// API-based storage functions
+async function fetchConversations(): Promise<StoredConversation[]> {
+  try {
+    const res = await fetch("/api/conversations")
+    if (!res.ok) return []
+    return await res.json()
+  } catch {
+    return []
   }
-  return []
 }
 
-function saveMessages(conversationId: string, messages: unknown[]) {
-  localStorage.setItem(MESSAGES_KEY_PREFIX + conversationId, JSON.stringify(messages))
+async function saveConversationsToServer(conversations: StoredConversation[]) {
+  try {
+    await fetch("/api/conversations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(conversations),
+    })
+  } catch (error) {
+    console.error("Failed to save conversations:", error)
+  }
 }
 
-function deleteMessages(conversationId: string) {
-  localStorage.removeItem(MESSAGES_KEY_PREFIX + conversationId)
+async function fetchMessages(conversationId: string) {
+  try {
+    const res = await fetch(`/api/messages?conversationId=${conversationId}`)
+    if (!res.ok) return []
+    return await res.json()
+  } catch {
+    return []
+  }
+}
+
+async function saveMessagesToServer(conversationId: string, messages: unknown[]) {
+  try {
+    await fetch("/api/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId, messages }),
+    })
+  } catch (error) {
+    console.error("Failed to save messages:", error)
+  }
+}
+
+async function deleteMessagesFromServer(conversationId: string) {
+  try {
+    await fetch(`/api/messages?conversationId=${conversationId}`, {
+      method: "DELETE",
+    })
+  } catch (error) {
+    console.error("Failed to delete messages:", error)
+  }
 }
 
 export default function ChatPage() {
@@ -114,45 +129,53 @@ export default function ChatPage() {
     }),
   })
 
-  // Initialize from localStorage
+  // Initialize from server
   React.useEffect(() => {
-    const stored = getStoredConversations()
-    const activeId = getActiveConversationId()
+    async function loadData() {
+      const stored = await fetchConversations()
+      const activeId = getActiveConversationId()
 
-    let currentId: string
-    if (stored.length === 0) {
-      const defaultConversation: StoredConversation = {
-        id: "default",
-        title: "New conversation",
-        createdAt: new Date().toISOString(),
+      let currentId: string
+      if (stored.length === 0) {
+        const defaultConversation: StoredConversation = {
+          id: "default",
+          title: "New conversation",
+          createdAt: new Date().toISOString(),
+        }
+        setConversations([defaultConversation])
+        currentId = defaultConversation.id
+        await saveConversationsToServer([defaultConversation])
+        saveActiveConversationId(defaultConversation.id)
+      } else {
+        setConversations(stored)
+        currentId = activeId || stored[0].id
       }
-      setConversations([defaultConversation])
-      currentId = defaultConversation.id
-      saveConversations([defaultConversation])
-      saveActiveConversationId(defaultConversation.id)
-    } else {
-      setConversations(stored)
-      currentId = activeId || stored[0].id
+
+      setActiveConversationId(currentId)
+      setIsLoaded(true)
     }
 
-    setActiveConversationId(currentId)
-    setIsLoaded(true)
+    loadData()
   }, [])
 
   // Load stored messages after initial load
   React.useEffect(() => {
-    if (isLoaded && activeConversationId && !initialLoadDoneRef.current) {
-      const storedMessages = getStoredMessages(activeConversationId)
-      if (storedMessages.length > 0) {
-        setMessages(storedMessages)
+    async function loadMessages() {
+      if (isLoaded && activeConversationId && !initialLoadDoneRef.current) {
+        const storedMessages = await fetchMessages(activeConversationId)
+        if (storedMessages.length > 0) {
+          setMessages(storedMessages)
+        }
+        initialLoadDoneRef.current = true
       }
-      initialLoadDoneRef.current = true
     }
+
+    loadMessages()
   }, [isLoaded, activeConversationId, setMessages])
 
   const isLoading = status === "streaming" || status === "submitted"
 
-  // Save messages to localStorage when streaming completes
+  // Save messages to server when streaming completes
   React.useEffect(() => {
     // Save when status changes from streaming/submitted to ready
     if (
@@ -161,7 +184,7 @@ export default function ChatPage() {
       activeConversationId &&
       messages.length > 0
     ) {
-      saveMessages(activeConversationId, messages)
+      saveMessagesToServer(activeConversationId, messages)
     }
     prevStatusRef.current = status
   }, [status, activeConversationId, messages])
@@ -178,7 +201,7 @@ export default function ChatPage() {
         }
         return c
       })
-      saveConversations(updated)
+      saveConversationsToServer(updated)
       return updated
     })
   }, [])
@@ -202,25 +225,25 @@ export default function ChatPage() {
   }, [messages])
 
   // Switch conversation
-  const switchConversation = (id: string) => {
+  const switchConversation = async (id: string) => {
     // Save current messages before switching
     if (activeConversationId && messages.length > 0) {
-      saveMessages(activeConversationId, messages)
+      await saveMessagesToServer(activeConversationId, messages)
     }
 
     setActiveConversationId(id)
     saveActiveConversationId(id)
 
     // Load messages for the new conversation
-    const storedMessages = getStoredMessages(id)
+    const storedMessages = await fetchMessages(id)
     setMessages(storedMessages)
   }
 
   // Create new conversation
-  const createConversation = () => {
+  const createConversation = async () => {
     // Save current messages before switching
     if (activeConversationId && messages.length > 0) {
-      saveMessages(activeConversationId, messages)
+      await saveMessagesToServer(activeConversationId, messages)
     }
 
     const newConversation: StoredConversation = {
@@ -230,17 +253,17 @@ export default function ChatPage() {
     }
     const updated = [newConversation, ...conversations]
     setConversations(updated)
-    saveConversations(updated)
+    await saveConversationsToServer(updated)
     setActiveConversationId(newConversation.id)
     saveActiveConversationId(newConversation.id)
     setMessages([])
   }
 
   // Delete conversation
-  const deleteConversation = (id: string) => {
+  const deleteConversation = async (id: string) => {
     const filtered = conversations.filter((c) => c.id !== id)
     // Delete the messages for this conversation
-    deleteMessages(id)
+    await deleteMessagesFromServer(id)
 
     if (filtered.length === 0) {
       const newDefault: StoredConversation = {
@@ -249,19 +272,19 @@ export default function ChatPage() {
         createdAt: new Date().toISOString(),
       }
       setConversations([newDefault])
-      saveConversations([newDefault])
+      await saveConversationsToServer([newDefault])
       setActiveConversationId(newDefault.id)
       saveActiveConversationId(newDefault.id)
       setMessages([])
     } else {
       setConversations(filtered)
-      saveConversations(filtered)
+      await saveConversationsToServer(filtered)
       if (activeConversationId === id) {
         const nextId = filtered[0].id
         setActiveConversationId(nextId)
         saveActiveConversationId(nextId)
         // Load messages for the next conversation
-        const storedMessages = getStoredMessages(nextId)
+        const storedMessages = await fetchMessages(nextId)
         setMessages(storedMessages)
       }
     }
@@ -293,7 +316,7 @@ export default function ChatPage() {
       .join("") || ""
   }
 
-  // Show loading state while hydrating from localStorage
+  // Show loading state while hydrating
   if (!isLoaded) {
     return (
       <div className="flex h-screen items-center justify-center">
