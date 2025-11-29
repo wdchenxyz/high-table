@@ -1013,48 +1013,45 @@ export default function CouncilPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <Textarea
-                  value={question}
-                  onChange={(e) => {
-                    if (!activeConversationId) return
-                    const value = e.target.value
-                    updateConversationState(activeConversationId, (prev) => ({
-                      ...prev,
-                      question: value,
-                    }))
-                  }}
-                  onKeyDown={handleKeyDown}
-                  placeholder="What would you like the council to discuss?"
-                  className="min-h-[100px] resize-none"
-                  disabled={isProcessing}
-                />
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">
-                    Press Enter to submit, Shift+Enter for new line
-                  </p>
-                  <div className="flex gap-2">
+              <form onSubmit={handleSubmit}>
+                <div className="relative">
+                  <Textarea
+                    value={question}
+                    onChange={(e) => {
+                      if (!activeConversationId) return
+                      const value = e.target.value
+                      updateConversationState(activeConversationId, (prev) => ({
+                        ...prev,
+                        question: value,
+                      }))
+                    }}
+                    onKeyDown={handleKeyDown}
+                    placeholder="What would you like the council to discuss?"
+                    className="min-h-[80px] resize-none pr-14"
+                    disabled={isProcessing}
+                  />
+                  <div className="absolute bottom-2 right-2 flex gap-1">
                     {isProcessing && (
                       <Button
                         type="button"
                         variant="destructive"
+                        size="icon"
+                        className="h-8 w-8"
                         onClick={handleCancel}
                       >
-                        <Square className="mr-2 h-4 w-4" />
-                        Stop
+                        <Square className="h-4 w-4" />
                       </Button>
                     )}
-                    <Button type="submit" disabled={!question.trim() || isProcessing}>
+                    <Button
+                      type="submit"
+                      size="icon"
+                      className="h-8 w-8"
+                      disabled={!question.trim() || isProcessing}
+                    >
                       {isProcessing ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Processing...
-                        </>
+                        <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
-                        <>
-                          <Send className="mr-2 h-4 w-4" />
-                          Submit to High Table
-                        </>
+                        <Send className="h-4 w-4" />
                       )}
                     </Button>
                   </div>
