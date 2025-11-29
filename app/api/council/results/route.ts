@@ -1,21 +1,9 @@
 import { NextResponse } from "next/server"
-import { readFile, writeFile, unlink, mkdir } from "fs/promises"
-import { existsSync } from "fs"
-import path from "path"
+import { Redis } from "@upstash/redis"
 
-const DATA_DIR = path.join(process.cwd(), "data")
-const COUNCIL_DIR = path.join(DATA_DIR, "council")
-const RESULTS_DIR = path.join(COUNCIL_DIR, "results")
+const redis = Redis.fromEnv()
 
-async function ensureResultsDir() {
-  if (!existsSync(RESULTS_DIR)) {
-    await mkdir(RESULTS_DIR, { recursive: true })
-  }
-}
-
-function getResultFile(conversationId: string) {
-  return path.join(RESULTS_DIR, `${conversationId}.json`)
-}
+const resultKey = (conversationId: string) => `council:results:${conversationId}`
 
 export async function GET(req: Request) {
   try {
@@ -26,15 +14,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "conversationId required" }, { status: 400 })
     }
 
-    await ensureResultsDir()
-    const resultFile = getResultFile(conversationId)
-
-    if (!existsSync(resultFile)) {
-      return NextResponse.json(null)
-    }
-
-    const data = await readFile(resultFile, "utf-8")
-    return NextResponse.json(JSON.parse(data))
+    const result = await redis.get<unknown>(resultKey(conversationId))
+    return NextResponse.json(result ?? null)
   } catch (error) {
     console.error("Error reading council result:", error)
     return NextResponse.json(null)
@@ -49,9 +30,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "conversationId required" }, { status: 400 })
     }
 
-    await ensureResultsDir()
-    const resultFile = getResultFile(conversationId)
-    await writeFile(resultFile, JSON.stringify(result, null, 2))
+    await redis.set(resultKey(conversationId), result)
 
     return NextResponse.json({ success: true })
   } catch (error) {
@@ -69,12 +48,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "conversationId required" }, { status: 400 })
     }
 
-    await ensureResultsDir()
-    const resultFile = getResultFile(conversationId)
-
-    if (existsSync(resultFile)) {
-      await unlink(resultFile)
-    }
+    await redis.del(resultKey(conversationId))
 
     return NextResponse.json({ success: true })
   } catch (error) {
