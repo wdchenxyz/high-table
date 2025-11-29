@@ -29,7 +29,7 @@ export default function Home() {
           <Link href="/chat" className="group">
             <Card className="h-full transition-all hover:border-primary hover:shadow-md">
               <CardHeader>
-                <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
                   <MessageSquare className="h-6 w-6" />
                 </div>
                 <CardTitle>Chat</CardTitle>
