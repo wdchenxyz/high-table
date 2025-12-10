@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Shield, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
+import { Crown, Eye, EyeOff, ArrowRight, Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -38,40 +38,14 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="login-page relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0a0a0b]">
-      {/* Ambient background effects */}
-      <div className="pointer-events-none absolute inset-0">
-        {/* Radial gradient glow */}
-        <div className="absolute left-1/2 top-1/2 h-[800px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-r from-amber-900/20 via-transparent to-transparent blur-3xl" />
-        <div className="absolute right-0 top-0 h-[600px] w-[600px] rounded-full bg-gradient-to-l from-amber-800/10 via-transparent to-transparent blur-3xl" />
-
-        {/* Subtle grid pattern */}
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: `
-              linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)
-            `,
-            backgroundSize: '60px 60px'
-          }}
-        />
-
-        {/* Noise texture overlay */}
-        <div
-          className="absolute inset-0 opacity-[0.4]"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
-          }}
-        />
-      </div>
+    <div className="login-page relative flex min-h-screen items-center justify-center bg-[#0a0a0b]">
 
       {/* Main content */}
-      <main className="relative z-10 w-full max-w-md px-6">
+      <main className="w-full max-w-md px-6">
         {/* Logo and title */}
         <div className="mb-12 text-center">
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/10 to-transparent shadow-lg shadow-amber-500/5">
-            <Shield className="h-8 w-8 text-amber-400" strokeWidth={1.5} />
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-zinc-700 bg-zinc-800/50">
+            <Crown className="h-8 w-8 text-zinc-300" strokeWidth={1.5} />
           </div>
           <h1 className="font-display text-4xl font-light tracking-tight text-white">
             High Table
@@ -147,7 +121,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isPending}
-            className="group relative mt-8 flex h-12 w-full items-center justify-center gap-2 overflow-hidden rounded-lg bg-gradient-to-r from-amber-600 to-amber-500 font-medium text-black transition-all duration-300 hover:from-amber-500 hover:to-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+            className="group relative mt-8 flex h-12 w-full items-center justify-center gap-2 overflow-hidden rounded-lg bg-zinc-800 font-medium text-zinc-100 transition-all duration-300 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <span className="relative z-10 flex items-center gap-2">
               {isPending ? (
@@ -173,9 +147,6 @@ export default function LoginPage() {
         </p>
       </main>
 
-      {/* Decorative corner elements */}
-      <div className="pointer-events-none absolute left-8 top-8 h-24 w-24 border-l border-t border-zinc-800/50" />
-      <div className="pointer-events-none absolute bottom-8 right-8 h-24 w-24 border-b border-r border-zinc-800/50" />
 
       <style jsx>{`
         @keyframes fadeIn {
