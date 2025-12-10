@@ -482,6 +482,10 @@ export const PromptInput = ({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
 
+  // Drag-over state for visual feedback
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const dragCounterRef = useRef(0);
+
   // ----- Local attachments (only used when no provider)
   const [items, setItems] = useState<(FileUIPart & { id: string })[]>([]);
   const files = usingProvider ? controller.attachments.files : items;
@@ -502,11 +506,33 @@ export const PromptInput = ({
       if (!accept || accept.trim() === "") {
         return true;
       }
-      if (accept.includes("image/*")) {
-        return f.type.startsWith("image/");
+
+      // Parse accept string into individual patterns
+      const patterns = accept.split(",").map((p) => p.trim().toLowerCase());
+      const fileType = f.type.toLowerCase();
+      const fileName = f.name.toLowerCase();
+
+      for (const pattern of patterns) {
+        // Handle wildcard MIME types like "image/*"
+        if (pattern.endsWith("/*")) {
+          const prefix = pattern.slice(0, -1); // "image/"
+          if (fileType.startsWith(prefix)) {
+            return true;
+          }
+        }
+        // Handle file extensions like ".pdf", ".txt"
+        else if (pattern.startsWith(".")) {
+          if (fileName.endsWith(pattern)) {
+            return true;
+          }
+        }
+        // Handle exact MIME types
+        else if (fileType === pattern) {
+          return true;
+        }
       }
-      // NOTE: keep simple; expand as needed
-      return true;
+
+      return false;
     },
     [accept]
   );
@@ -613,6 +639,22 @@ export const PromptInput = ({
     const form = formRef.current;
     if (!form) return;
 
+    const onDragEnter = (e: DragEvent) => {
+      if (e.dataTransfer?.types?.includes("Files")) {
+        e.preventDefault();
+        dragCounterRef.current++;
+        setIsDraggingOver(true);
+      }
+    };
+    const onDragLeave = (e: DragEvent) => {
+      if (e.dataTransfer?.types?.includes("Files")) {
+        e.preventDefault();
+        dragCounterRef.current--;
+        if (dragCounterRef.current === 0) {
+          setIsDraggingOver(false);
+        }
+      }
+    };
     const onDragOver = (e: DragEvent) => {
       if (e.dataTransfer?.types?.includes("Files")) {
         e.preventDefault();
@@ -622,13 +664,19 @@ export const PromptInput = ({
       if (e.dataTransfer?.types?.includes("Files")) {
         e.preventDefault();
       }
+      dragCounterRef.current = 0;
+      setIsDraggingOver(false);
       if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
         add(e.dataTransfer.files);
       }
     };
+    form.addEventListener("dragenter", onDragEnter);
+    form.addEventListener("dragleave", onDragLeave);
     form.addEventListener("dragover", onDragOver);
     form.addEventListener("drop", onDrop);
     return () => {
+      form.removeEventListener("dragenter", onDragEnter);
+      form.removeEventListener("dragleave", onDragLeave);
       form.removeEventListener("dragover", onDragOver);
       form.removeEventListener("drop", onDrop);
     };
@@ -785,12 +833,25 @@ export const PromptInput = ({
         type="file"
       />
       <form
-        className={cn("w-full", className)}
+        className={cn("w-full relative", className)}
         onSubmit={handleSubmit}
         ref={formRef}
         {...props}
       >
-        <InputGroup className="overflow-hidden">{children}</InputGroup>
+        <InputGroup className={cn(
+          "overflow-hidden transition-all duration-200",
+          isDraggingOver && "ring-2 ring-primary ring-offset-2 ring-offset-background"
+        )}>
+          {children}
+        </InputGroup>
+        {isDraggingOver && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm rounded-lg pointer-events-none z-10">
+            <div className="flex flex-col items-center gap-2 text-primary">
+              <PaperclipIcon className="size-8" />
+              <span className="text-sm font-medium">Drop files here</span>
+            </div>
+          </div>
+        )}
       </form>
     </>
   );

@@ -3,21 +3,33 @@
 import * as React from "react"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
+import type { FileUIPart } from "ai"
 import {
   MessageSquare,
   Plus,
-  Send,
   PanelLeftClose,
   PanelLeft,
   Trash2,
   Loader2,
+  PaperclipIcon,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import {
+  PromptInput,
+  PromptInputTextarea,
+  PromptInputFooter,
+  PromptInputTools,
+  PromptInputButton,
+  PromptInputSubmit,
+  PromptInputAttachments,
+  PromptInputAttachment,
+  usePromptInputAttachments,
+  type PromptInputMessage,
+} from "@/components/ai-elements/prompt-input"
 import {
   Sidebar,
   SidebarContent,
@@ -33,6 +45,19 @@ import {
   SidebarProvider,
   SidebarFooter,
 } from "@/components/ui/sidebar"
+
+// Attachment button that uses the PromptInput context
+function AttachmentButton() {
+  const attachments = usePromptInputAttachments()
+  return (
+    <PromptInputButton
+      type="button"
+      onClick={() => attachments.openFileDialog()}
+    >
+      <PaperclipIcon className="h-4 w-4" />
+    </PromptInputButton>
+  )
+}
 
 interface StoredConversation {
   id: string
@@ -112,7 +137,6 @@ export default function ChatPage() {
   const [conversations, setConversations] = React.useState<StoredConversation[]>([])
   const [activeConversationId, setActiveConversationId] = React.useState<string>("")
   const [isLoaded, setIsLoaded] = React.useState(false)
-  const [input, setInput] = React.useState("")
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
   const prevStatusRef = React.useRef<string>("")
   const initialLoadDoneRef = React.useRef(false)
@@ -291,21 +315,12 @@ export default function ChatPage() {
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (input.trim() && !isLoading) {
-      sendMessage({ text: input })
-      setInput("")
-    }
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      if (input.trim() && !isLoading) {
-        sendMessage({ text: input })
-        setInput("")
-      }
+  const handleSubmit = (message: PromptInputMessage) => {
+    if (message.text.trim() && !isLoading) {
+      sendMessage({
+        text: message.text,
+        files: message.files,
+      })
     }
   }
 
@@ -315,6 +330,13 @@ export default function ChatPage() {
       ?.filter((p): p is { type: "text"; text: string } => p.type === "text")
       .map((p) => p.text)
       .join("") || ""
+  }
+
+  // Helper to extract file parts from message
+  const getMessageFiles = (message: typeof messages[0]) => {
+    return message.parts?.filter(
+      (p): p is FileUIPart => p.type === "file"
+    ) || []
   }
 
   // Show loading state while hydrating
@@ -434,6 +456,38 @@ export default function ChatPage() {
                       : "bg-muted"
                   )}
                 >
+                  {/* Display file attachments */}
+                  {getMessageFiles(message).length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {getMessageFiles(message).map((file, idx) => (
+                        <div
+                          key={idx}
+                          className={cn(
+                            "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs",
+                            message.role === "user"
+                              ? "bg-primary-foreground/20"
+                              : "bg-background"
+                          )}
+                        >
+                          {file.mediaType?.startsWith("image/") && file.url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={file.url}
+                              alt={file.filename || "Image"}
+                              className="h-16 w-16 rounded object-cover"
+                            />
+                          ) : (
+                            <>
+                              <PaperclipIcon className="h-3 w-3" />
+                              <span className="truncate max-w-[120px]">
+                                {file.filename || "File"}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <p className="whitespace-pre-wrap">{getMessageText(message)}</p>
                 </div>
                 {message.role === "user" && (
@@ -463,34 +517,35 @@ export default function ChatPage() {
 
         {/* Input */}
         <div className="border-t p-4">
-          <form onSubmit={handleSubmit} className="mx-auto max-w-3xl">
-            <div className="relative flex items-end gap-2">
-              <Textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
+          <div className="mx-auto max-w-3xl">
+            <PromptInput
+              onSubmit={handleSubmit}
+              accept="image/*,.pdf,.txt,.md,.json,.csv"
+              multiple
+              className="rounded-lg"
+            >
+              <PromptInputAttachments>
+                {(file) => <PromptInputAttachment key={file.id} data={file} />}
+              </PromptInputAttachments>
+              <PromptInputTextarea
                 placeholder="Type your message..."
-                className="min-h-[52px] max-h-[200px] resize-none pr-12"
-                rows={1}
+                className="min-h-[52px] max-h-[200px]"
                 disabled={isLoading}
               />
-              <Button
-                type="submit"
-                disabled={!input.trim() || isLoading}
-                size="icon"
-                className="absolute bottom-2 right-2 h-8 w-8"
-              >
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
+              <PromptInputFooter>
+                <PromptInputTools>
+                  <AttachmentButton />
+                </PromptInputTools>
+                <PromptInputSubmit
+                  disabled={isLoading}
+                  status={isLoading ? "streaming" : "ready"}
+                />
+              </PromptInputFooter>
+            </PromptInput>
             <p className="mt-2 text-center text-xs text-muted-foreground">
               Press Enter to send, Shift+Enter for new line
             </p>
-          </form>
+          </div>
         </div>
       </SidebarInset>
     </SidebarProvider>

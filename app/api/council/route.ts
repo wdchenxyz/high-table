@@ -1,4 +1,5 @@
-import { streamText } from "ai"
+import { streamText, type CoreUserMessage, type FilePart, type TextPart } from "ai"
+import type { FileUIPart } from "ai"
 import {
   COUNCIL_MODELS,
   CHAIRMAN_MODEL,
@@ -6,6 +7,29 @@ import {
 } from "@/lib/council-config"
 
 export const maxDuration = 120 // 2 minutes for the full council process
+
+// Helper to build message content with optional files
+function buildUserMessage(text: string, files?: FileUIPart[]): CoreUserMessage {
+  const content: (TextPart | FilePart)[] = []
+
+  // Add text part
+  content.push({ type: "text", text })
+
+  // Add file parts if provided
+  if (files && files.length > 0) {
+    for (const file of files) {
+      if (file.url) {
+        content.push({
+          type: "file",
+          data: file.url,
+          mediaType: file.mediaType || "application/octet-stream",
+        })
+      }
+    }
+  }
+
+  return { role: "user", content }
+}
 
 interface Stage1Response {
   modelId: string
@@ -97,7 +121,7 @@ function shuffleArray<T>(array: T[]): T[] {
 }
 
 export async function POST(request: Request) {
-  const { question } = await request.json()
+  const { question, files } = await request.json() as { question: string; files?: FileUIPart[] }
 
   if (!question || typeof question !== "string") {
     return new Response(JSON.stringify({ error: "Question is required" }), {
@@ -105,6 +129,9 @@ export async function POST(request: Request) {
       headers: { "Content-Type": "application/json" },
     })
   }
+
+  // Build user message with optional file attachments
+  const userMessage = buildUserMessage(question, files)
 
   // Create a TransformStream for SSE
   const encoder = new TextEncoder()
@@ -140,7 +167,7 @@ export async function POST(request: Request) {
           const result = streamText({
             model: `${model.provider}/${model.model}`,
             system: "You are a helpful AI assistant. Provide a thoughtful, accurate, and well-structured response.",
-            prompt: question,
+            messages: [userMessage],
           })
 
           for await (const chunk of result.textStream) {

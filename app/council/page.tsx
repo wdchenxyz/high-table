@@ -1,11 +1,11 @@
 "use client"
 
 import * as React from "react"
+import type { FileUIPart } from "ai"
 import {
   Check,
   Copy,
   Users,
-  Send,
   Loader2,
   CheckCircle2,
   Circle,
@@ -18,11 +18,11 @@ import {
   Trash2,
   ChevronDown,
   Square,
+  PaperclipIcon,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -49,7 +49,32 @@ import {
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { MessageResponse } from "@/components/ai-elements/message"
+import {
+  PromptInput,
+  PromptInputTextarea,
+  PromptInputFooter,
+  PromptInputTools,
+  PromptInputButton,
+  PromptInputSubmit,
+  PromptInputAttachments,
+  PromptInputAttachment,
+  usePromptInputAttachments,
+  type PromptInputMessage,
+} from "@/components/ai-elements/prompt-input"
 import { COUNCIL_MODELS, CHAIRMAN_MODEL } from "@/lib/council-config"
+
+// Attachment button that uses the PromptInput context
+function AttachmentButton() {
+  const attachments = usePromptInputAttachments()
+  return (
+    <PromptInputButton
+      type="button"
+      onClick={() => attachments.openFileDialog()}
+    >
+      <PaperclipIcon className="h-4 w-4" />
+    </PromptInputButton>
+  )
+}
 
 // Types matching the API response
 interface Stage1Response {
@@ -111,6 +136,7 @@ interface CouncilResult {
 
 interface ConversationState {
   question: string
+  files: FileUIPart[]
   currentStage: number
   stageStatuses: Record<number, StageStatus>
   modelStatuses: Record<number, Record<string, ModelStatus>>
@@ -123,6 +149,7 @@ interface ConversationState {
 
 const createEmptyConversationState = (): ConversationState => ({
   question: "",
+  files: [],
   currentStage: 0,
   stageStatuses: { 1: "idle", 2: "idle", 3: "idle" },
   modelStatuses: { 1: {}, 2: {}, 3: {} },
@@ -570,13 +597,12 @@ export default function CouncilPage() {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (message: PromptInputMessage) => {
     if (!activeConversationId) return
 
     const conversationId = activeConversationId
     const currentState = conversationStates[conversationId] ?? createEmptyConversationState()
-    const trimmedQuestion = currentState.question.trim()
+    const trimmedQuestion = message.text.trim()
 
     if (!trimmedQuestion || currentState.isProcessing) return
 
@@ -599,6 +625,8 @@ export default function CouncilPage() {
 
     updateConversationState(conversationId, (prev) => ({
       ...prev,
+      question: trimmedQuestion,
+      files: message.files,
       isProcessing: true,
       currentStage: 0,
       stageStatuses: { 1: "idle", 2: "idle", 3: "idle" },
@@ -617,7 +645,7 @@ export default function CouncilPage() {
       const response = await fetch("/api/council", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: trimmedQuestion }),
+        body: JSON.stringify({ question: trimmedQuestion, files: message.files }),
         signal: abortController.signal,
       })
 
@@ -813,13 +841,6 @@ export default function CouncilPage() {
     [updateConversationState]
   )
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSubmit(e)
-    }
-  }
-
   const getStatusIcon = (status: ModelStatus["status"]) => {
     switch (status) {
       case "generating":
@@ -978,11 +999,8 @@ export default function CouncilPage() {
                     <button
                       key={index}
                       onClick={() => {
-                        if (!activeConversationId) return
-                        updateConversationState(activeConversationId, (prev) => ({
-                          ...prev,
-                          question: example.question,
-                        }))
+                        if (!activeConversationId || isProcessing) return
+                        handleSubmit({ text: example.question, files: [] })
                       }}
                       className="group flex items-start gap-2 rounded-md border bg-card px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
                     >
@@ -1013,24 +1031,25 @@ export default function CouncilPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleSubmit}>
-                <div className="relative">
-                  <Textarea
-                    value={question}
-                    onChange={(e) => {
-                      if (!activeConversationId) return
-                      const value = e.target.value
-                      updateConversationState(activeConversationId, (prev) => ({
-                        ...prev,
-                        question: value,
-                      }))
-                    }}
-                    onKeyDown={handleKeyDown}
-                    placeholder="What would you like the council to discuss?"
-                    className="min-h-[80px] resize-none pr-14"
-                    disabled={isProcessing}
-                  />
-                  <div className="absolute bottom-2 right-2 flex gap-1">
+              <PromptInput
+                onSubmit={handleSubmit}
+                accept="image/*,.pdf,.txt,.md,.json,.csv"
+                multiple
+                className="rounded-lg"
+              >
+                <PromptInputAttachments>
+                  {(file) => <PromptInputAttachment key={file.id} data={file} />}
+                </PromptInputAttachments>
+                <PromptInputTextarea
+                  placeholder="What would you like the council to discuss?"
+                  className="min-h-[80px]"
+                  disabled={isProcessing}
+                />
+                <PromptInputFooter>
+                  <PromptInputTools>
+                    <AttachmentButton />
+                  </PromptInputTools>
+                  <div className="flex gap-1">
                     {isProcessing && (
                       <Button
                         type="button"
@@ -1042,21 +1061,13 @@ export default function CouncilPage() {
                         <Square className="h-4 w-4" />
                       </Button>
                     )}
-                    <Button
-                      type="submit"
-                      size="icon"
-                      className="h-8 w-8"
-                      disabled={!question.trim() || isProcessing}
-                    >
-                      {isProcessing ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Send className="h-4 w-4" />
-                      )}
-                    </Button>
+                    <PromptInputSubmit
+                      disabled={isProcessing}
+                      status={isProcessing ? "streaming" : "ready"}
+                    />
                   </div>
-                </div>
-              </form>
+                </PromptInputFooter>
+              </PromptInput>
             </CardContent>
           </Card>
 
