@@ -500,6 +500,7 @@ export default function CouncilPage() {
     conversationStates[activeConversationId] ?? createEmptyConversationState()
   const {
     question,
+    files,
     isProcessing,
     currentStage,
     stageStatuses,
@@ -1070,6 +1071,47 @@ export default function CouncilPage() {
               </PromptInput>
             </CardContent>
           </Card>
+
+          {/* User's Question Display */}
+          {(isProcessing || currentStage > 0) && question && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Avatar className="h-6 w-6">
+                    <AvatarFallback className="text-xs">U</AvatarFallback>
+                  </Avatar>
+                  Your Question
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <p className="text-sm whitespace-pre-wrap">{question}</p>
+                {/* Display attached files */}
+                {files.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {files.map((file, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center gap-2 rounded-md border bg-muted/50 px-2 py-1"
+                      >
+                        {file.mediaType?.startsWith("image/") && file.url ? (
+                          <img
+                            src={file.url}
+                            alt={file.filename || "Image"}
+                            className="h-8 w-8 rounded object-cover"
+                          />
+                        ) : (
+                          <PaperclipIcon className="h-4 w-4 text-muted-foreground" />
+                        )}
+                        <span className="text-xs text-muted-foreground truncate max-w-[150px]">
+                          {file.filename || "Attachment"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Progress Stepper */}
           {(isProcessing || currentStage > 0) && (

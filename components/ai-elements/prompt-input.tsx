@@ -642,15 +642,19 @@ export const PromptInput = ({
     const onDragEnter = (e: DragEvent) => {
       if (e.dataTransfer?.types?.includes("Files")) {
         e.preventDefault();
-        dragCounterRef.current++;
-        setIsDraggingOver(true);
+        // Only increment if entering from outside the form
+        if (!form.contains(e.relatedTarget as Node)) {
+          dragCounterRef.current = 1;
+          setIsDraggingOver(true);
+        }
       }
     };
     const onDragLeave = (e: DragEvent) => {
       if (e.dataTransfer?.types?.includes("Files")) {
         e.preventDefault();
-        dragCounterRef.current--;
-        if (dragCounterRef.current === 0) {
+        // Only clear if leaving the form entirely
+        if (!form.contains(e.relatedTarget as Node)) {
+          dragCounterRef.current = 0;
           setIsDraggingOver(false);
         }
       }
@@ -658,6 +662,10 @@ export const PromptInput = ({
     const onDragOver = (e: DragEvent) => {
       if (e.dataTransfer?.types?.includes("Files")) {
         e.preventDefault();
+        // Safety: ensure drag state is active when over the form
+        if (!isDraggingOver) {
+          setIsDraggingOver(true);
+        }
       }
     };
     const onDrop = (e: DragEvent) => {
@@ -680,7 +688,7 @@ export const PromptInput = ({
       form.removeEventListener("dragover", onDragOver);
       form.removeEventListener("drop", onDrop);
     };
-  }, [add]);
+  }, [add, isDraggingOver]);
 
   useEffect(() => {
     if (!globalDrop) return;

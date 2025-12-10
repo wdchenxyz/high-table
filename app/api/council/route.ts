@@ -8,6 +8,44 @@ import {
 
 export const maxDuration = 120 // 2 minutes for the full council process
 
+// File validation constants
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10MB
+const ALLOWED_MIME_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "application/pdf",
+  "text/plain",
+  "text/markdown",
+  "application/json",
+  "text/csv",
+]
+
+// Validate a file before processing
+function isValidFile(file: FileUIPart): boolean {
+  // Must have a URL
+  if (!file.url) return false
+
+  // URL must be a data URL (blob URLs won't work server-side)
+  if (!file.url.startsWith("data:")) return false
+
+  // Validate MIME type if provided
+  if (file.mediaType && !ALLOWED_MIME_TYPES.includes(file.mediaType)) {
+    return false
+  }
+
+  // Estimate size from base64 data URL (base64 is ~33% larger than original)
+  const base64Match = file.url.match(/^data:[^;]+;base64,(.+)$/)
+  if (base64Match) {
+    const base64Data = base64Match[1]
+    const estimatedSize = (base64Data.length * 3) / 4
+    if (estimatedSize > MAX_FILE_SIZE_BYTES) return false
+  }
+
+  return true
+}
+
 // Helper to build message content with optional files
 function buildUserMessage(text: string, files?: FileUIPart[]): CoreUserMessage {
   const content: (TextPart | FilePart)[] = []
@@ -15,10 +53,10 @@ function buildUserMessage(text: string, files?: FileUIPart[]): CoreUserMessage {
   // Add text part
   content.push({ type: "text", text })
 
-  // Add file parts if provided
+  // Add validated file parts
   if (files && files.length > 0) {
     for (const file of files) {
-      if (file.url) {
+      if (isValidFile(file)) {
         content.push({
           type: "file",
           data: file.url,
