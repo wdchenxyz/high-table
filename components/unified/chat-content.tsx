@@ -16,26 +16,12 @@ import {
   PromptInputTextarea,
   PromptInputFooter,
   PromptInputTools,
-  PromptInputButton,
   PromptInputSubmit,
   PromptInputAttachments,
   PromptInputAttachment,
-  usePromptInputAttachments,
   type PromptInputMessage,
 } from "@/components/ai-elements/prompt-input"
-
-// Attachment button that uses the PromptInput context
-function AttachmentButton() {
-  const attachments = usePromptInputAttachments()
-  return (
-    <PromptInputButton
-      type="button"
-      onClick={() => attachments.openFileDialog()}
-    >
-      <PaperclipIcon className="h-4 w-4" />
-    </PromptInputButton>
-  )
-}
+import { AttachmentButton } from "@/components/shared/attachment-button"
 
 interface ChatContentProps {
   messages: UIMessage[]

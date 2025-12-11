@@ -4,40 +4,19 @@ import * as React from "react"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import type { StoredConversation } from "@/lib/types"
+import { createConversationStorage } from "@/lib/conversation-storage"
 
-const ACTIVE_CONVERSATION_KEY = "chat-active-conversation"
+const chatStorage = createConversationStorage({
+  localStorageKey: "chat-active-conversation",
+  apiEndpoint: "/api/conversations",
+})
 
-function getActiveConversationId(): string {
-  if (typeof window === "undefined") return ""
-  return localStorage.getItem(ACTIVE_CONVERSATION_KEY) || ""
-}
-
-function saveActiveConversationId(id: string) {
-  localStorage.setItem(ACTIVE_CONVERSATION_KEY, id)
-}
-
-// API-based storage functions
-async function fetchConversations(): Promise<StoredConversation[]> {
-  try {
-    const res = await fetch("/api/conversations")
-    if (!res.ok) return []
-    return await res.json()
-  } catch {
-    return []
-  }
-}
-
-async function saveConversationsToServer(conversations: StoredConversation[]) {
-  try {
-    await fetch("/api/conversations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(conversations),
-    })
-  } catch (error) {
-    console.error("Failed to save conversations:", error)
-  }
-}
+const {
+  getActiveConversationId,
+  saveActiveConversationId,
+  fetchConversations,
+  saveConversationsToServer,
+} = chatStorage
 
 async function fetchMessages(conversationId: string) {
   try {

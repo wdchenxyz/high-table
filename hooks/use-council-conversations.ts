@@ -12,43 +12,23 @@ import type {
   StageStatus,
 } from "@/lib/types"
 import { createEmptyConversationState } from "@/lib/types"
+import { createConversationStorage } from "@/lib/conversation-storage"
 import { CHAIRMAN_MODEL } from "@/lib/council-config"
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input"
 
-const ACTIVE_COUNCIL_KEY = "council-active-conversation"
 const CHAIRMAN_MODEL_ID = CHAIRMAN_MODEL.id
 
-function getActiveConversationId(): string {
-  if (typeof window === "undefined") return ""
-  return localStorage.getItem(ACTIVE_COUNCIL_KEY) || ""
-}
+const councilStorage = createConversationStorage({
+  localStorageKey: "council-active-conversation",
+  apiEndpoint: "/api/council/conversations",
+})
 
-function saveActiveConversationId(id: string) {
-  localStorage.setItem(ACTIVE_COUNCIL_KEY, id)
-}
-
-// API storage functions
-async function fetchConversations(): Promise<StoredConversation[]> {
-  try {
-    const res = await fetch("/api/council/conversations")
-    if (!res.ok) return []
-    return await res.json()
-  } catch {
-    return []
-  }
-}
-
-async function saveConversationsToServer(conversations: StoredConversation[]) {
-  try {
-    await fetch("/api/council/conversations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(conversations),
-    })
-  } catch (error) {
-    console.error("Failed to save council conversations:", error)
-  }
-}
+const {
+  getActiveConversationId,
+  saveActiveConversationId,
+  fetchConversations,
+  saveConversationsToServer,
+} = councilStorage
 
 async function fetchResult(conversationId: string): Promise<CouncilResult | null> {
   try {

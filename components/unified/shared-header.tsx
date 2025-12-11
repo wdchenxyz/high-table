@@ -40,11 +40,6 @@ export function SharedHeader({
         {mode === "council" && <Users className="h-5 w-5 text-primary" />}
         <h1 className="font-semibold">{title}</h1>
       </div>
-      {mode === "council" && (
-        <Badge variant="secondary" className="hidden sm:inline-flex">
-          3-Stage Deliberation
-        </Badge>
-      )}
       <div className="ml-auto">
         <ModeSwitch
           mode={mode}
