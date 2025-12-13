@@ -43,10 +43,11 @@ export const MODELS: CouncilModel[] = [
 ]
 
 // Default chairman model ID (must exist in MODELS)
-export const DEFAULT_CHAIRMAN_ID = "gemini-pro"
+export const DEFAULT_CHAIRMAN_ID = "gemini-3-pro"
 
 // Helper to get default chairman model object
-export const DEFAULT_CHAIRMAN = MODELS.find(m => m.id === DEFAULT_CHAIRMAN_ID)!
+export const DEFAULT_CHAIRMAN =
+  MODELS.find((m) => m.id === DEFAULT_CHAIRMAN_ID) ?? MODELS[0]
 
 // Generate anonymous labels for responses (A, B, C, etc.)
 export function generateLabel(index: number): string {
