@@ -1,8 +1,8 @@
 import { streamText, type CoreUserMessage, type FilePart, type TextPart } from "ai"
 import type { FileUIPart } from "ai"
 import {
-  COUNCIL_MODELS,
-  CHAIRMAN_MODEL,
+  MODELS,
+  DEFAULT_CHAIRMAN,
   generateLabel,
 } from "@/lib/council-config"
 
@@ -96,7 +96,7 @@ interface CouncilResult {
   }
 }
 
-function parseRankingFromText(text: string): string[] {
+function parseRankingFromText(text: string, councilSize: number): string[] {
   // Look for FINAL RANKING section
   const rankingMatch = text.match(/FINAL RANKING[:\s]*([\s\S]*?)(?:$|(?=\n\n))/i)
   if (rankingMatch) {
@@ -107,17 +107,18 @@ function parseRankingFromText(text: string): string[] {
 
   // Fallback: extract any "Response X" mentions in order
   const fallback = text.match(/Response\s+[A-Z]/gi) || []
-  return [...new Set(fallback)].slice(0, COUNCIL_MODELS.length)
+  return [...new Set(fallback)].slice(0, councilSize)
 }
 
 function calculateAggregateRankings(
   evaluations: Stage2Evaluation[],
-  labelToModel: Record<string, string>
+  labelToModel: Record<string, string>,
+  activeModels: typeof MODELS
 ): { modelId: string; modelName: string; avgRank: number; votes: number }[] {
   const rankings: Record<string, { total: number; count: number }> = {}
 
-  // Initialize rankings for all models
-  for (const model of COUNCIL_MODELS) {
+  // Initialize rankings for active models only
+  for (const model of activeModels) {
     rankings[model.id] = { total: 0, count: 0 }
   }
 
@@ -127,7 +128,7 @@ function calculateAggregateRankings(
       const normalizedLabel = label.replace(/\s+/g, " ").trim()
       const modelName = labelToModel[normalizedLabel]
       if (modelName) {
-        const model = COUNCIL_MODELS.find((m) => m.name === modelName)
+        const model = activeModels.find((m) => m.name === modelName)
         if (model) {
           rankings[model.id].total += index + 1 // 1-indexed rank
           rankings[model.id].count += 1
@@ -137,12 +138,12 @@ function calculateAggregateRankings(
   }
 
   // Calculate averages and sort
-  return COUNCIL_MODELS.map((model) => ({
+  return activeModels.map((model) => ({
     modelId: model.id,
     modelName: model.name,
     avgRank: rankings[model.id].count > 0
       ? rankings[model.id].total / rankings[model.id].count
-      : COUNCIL_MODELS.length,
+      : activeModels.length,
     votes: rankings[model.id].count,
   })).sort((a, b) => a.avgRank - b.avgRank)
 }
@@ -159,7 +160,12 @@ function shuffleArray<T>(array: T[]): T[] {
 }
 
 export async function POST(request: Request) {
-  const { question, files } = await request.json() as { question: string; files?: FileUIPart[] }
+  const { question, files, councilModelIds, chairmanModelId } = await request.json() as {
+    question: string
+    files?: FileUIPart[]
+    councilModelIds?: string[]
+    chairmanModelId?: string
+  }
 
   if (!question || typeof question !== "string") {
     return new Response(JSON.stringify({ error: "Question is required" }), {
@@ -170,6 +176,21 @@ export async function POST(request: Request) {
 
   // Build user message with optional file attachments
   const userMessage = buildUserMessage(question, files)
+
+  // Filter council models based on selection (default to all if not specified or invalid)
+  const activeCouncilModels =
+    councilModelIds && councilModelIds.length >= 2
+      ? MODELS.filter((m) => councilModelIds.includes(m.id))
+      : MODELS
+
+  // Ensure we have at least 2 models after filtering
+  const finalCouncilModels =
+    activeCouncilModels.length >= 2 ? activeCouncilModels : MODELS
+
+  // Select chairman model (default to DEFAULT_CHAIRMAN if not specified or invalid)
+  const activeChairmanModel = chairmanModelId
+    ? MODELS.find((m) => m.id === chairmanModelId) || DEFAULT_CHAIRMAN
+    : DEFAULT_CHAIRMAN
 
   // Create a TransformStream for SSE
   const encoder = new TextEncoder()
@@ -192,7 +213,7 @@ export async function POST(request: Request) {
       // ============ STAGE 1: Collect Responses ============
       await sendEvent("stage", { stage: 1, status: "started" })
 
-      const stage1Promises = COUNCIL_MODELS.map(async (model) => {
+      const stage1Promises = finalCouncilModels.map(async (model) => {
         await sendEvent("model_status", {
           stage: 1,
           modelId: model.id,
@@ -279,7 +300,7 @@ FINAL RANKING:
 
 Do not include any additional text after the ranking.`
 
-      const stage2Promises = COUNCIL_MODELS.map(async (model) => {
+      const stage2Promises = finalCouncilModels.map(async (model) => {
         await sendEvent("model_status", {
           stage: 2,
           modelId: model.id,
@@ -308,7 +329,7 @@ Do not include any additional text after the ranking.`
           fullEvaluation = `[Error: Failed to get evaluation from ${model.name}]`
         }
 
-        const parsedRanking = parseRankingFromText(fullEvaluation)
+        const parsedRanking = parseRankingFromText(fullEvaluation, finalCouncilModels.length)
 
         await sendEvent("model_status", {
           stage: 2,
@@ -327,7 +348,7 @@ Do not include any additional text after the ranking.`
       })
 
       const evaluations = await Promise.all(stage2Promises)
-      const aggregateRankings = calculateAggregateRankings(evaluations, labelToModel)
+      const aggregateRankings = calculateAggregateRankings(evaluations, labelToModel, finalCouncilModels)
 
       await sendEvent("stage", {
         stage: 2,
@@ -343,7 +364,7 @@ Do not include any additional text after the ranking.`
       await sendEvent("stage", { stage: 3, status: "started" })
       await sendEvent("model_status", {
         stage: 3,
-        modelId: CHAIRMAN_MODEL.id,
+        modelId: activeChairmanModel.id,
         status: "synthesizing",
       })
 
@@ -384,7 +405,7 @@ Begin your synthesis:`
 
       try {
         const result = streamText({
-          model: `${CHAIRMAN_MODEL.provider}/${CHAIRMAN_MODEL.model}`,
+          model: `${activeChairmanModel.provider}/${activeChairmanModel.model}`,
           system: "You are the Chairman of an AI council, responsible for synthesizing the collective wisdom of multiple AI models into a single, authoritative response.",
           prompt: synthesisPrompt,
         })
@@ -393,7 +414,7 @@ Begin your synthesis:`
           synthesis += chunk
           await sendEvent("model_chunk", {
             stage: 3,
-            modelId: CHAIRMAN_MODEL.id,
+            modelId: activeChairmanModel.id,
             chunk,
           })
         }
@@ -404,7 +425,7 @@ Begin your synthesis:`
 
       await sendEvent("model_status", {
         stage: 3,
-        modelId: CHAIRMAN_MODEL.id,
+        modelId: activeChairmanModel.id,
         status: "complete",
         synthesis,
       })
@@ -414,7 +435,7 @@ Begin your synthesis:`
         status: "complete",
         data: {
           synthesis,
-          chairman: CHAIRMAN_MODEL.name,
+          chairman: activeChairmanModel.name,
         },
       })
 
@@ -428,7 +449,7 @@ Begin your synthesis:`
         },
         stage3: {
           synthesis,
-          chairman: CHAIRMAN_MODEL.name,
+          chairman: activeChairmanModel.name,
         },
       }
 

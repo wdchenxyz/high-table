@@ -13,10 +13,10 @@ import type {
 } from "@/lib/types"
 import { createEmptyConversationState } from "@/lib/types"
 import { createConversationStorage } from "@/lib/conversation-storage"
-import { CHAIRMAN_MODEL } from "@/lib/council-config"
+import { DEFAULT_CHAIRMAN_ID } from "@/lib/council-config"
+import { useModelSelection } from "@/hooks/use-model-selection"
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input"
 
-const CHAIRMAN_MODEL_ID = CHAIRMAN_MODEL.id
 
 const councilStorage = createConversationStorage({
   localStorageKey: "council-active-conversation",
@@ -89,7 +89,7 @@ const buildModelStatusesFromResult = (
   }
 
   if (result.stage3Data?.synthesis) {
-    statuses[3][CHAIRMAN_MODEL_ID] = {
+    statuses[3][DEFAULT_CHAIRMAN_ID] = {
       status: "complete",
       synthesis: result.stage3Data.synthesis,
     }
@@ -117,6 +117,9 @@ const mapResultToState = (result: CouncilResult): ConversationState => ({
 })
 
 export function useCouncilConversations() {
+  // Model selection state
+  const { selectedCouncilIds, selectedChairmanId } = useModelSelection()
+
   // Sidebar and conversation state
   const [conversations, setConversations] = React.useState<StoredConversation[]>([])
   const [activeConversationId, setActiveConversationId] = React.useState<string>("")
@@ -520,7 +523,12 @@ export function useCouncilConversations() {
       const response = await fetch("/api/council", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: trimmedQuestion, files: message.files }),
+        body: JSON.stringify({
+          question: trimmedQuestion,
+          files: message.files,
+          councilModelIds: selectedCouncilIds,
+          chairmanModelId: selectedChairmanId,
+        }),
         signal: abortController.signal,
       })
 
