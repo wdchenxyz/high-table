@@ -39,10 +39,10 @@ import {
 } from "@/components/ai-elements/prompt-input"
 import { AttachmentButton } from "@/components/shared/attachment-button"
 import { CopyButton } from "@/components/shared/copy-button"
-import { COUNCIL_MODELS, CHAIRMAN_MODEL } from "@/lib/council-config"
+import { MODELS } from "@/lib/council-config"
+import { ModelSelector } from "@/components/council/model-selector"
+import { useModelSelection } from "@/hooks/use-model-selection"
 import type { ConversationState, ModelStatus } from "@/lib/types"
-
-const CHAIRMAN_MODEL_ID = CHAIRMAN_MODEL.id
 
 // Example questions for the empty state
 const EXAMPLE_QUESTIONS = [
@@ -92,6 +92,9 @@ export function CouncilContent({
     error,
   } = state
 
+  // Get selected models for display
+  const { selectedCouncilModels, selectedChairmanId, selectedChairman } = useModelSelection()
+
   const getStatusIcon = (status: ModelStatus["status"]) => {
     switch (status) {
       case "generating":
@@ -135,7 +138,7 @@ export function CouncilContent({
                 Multiple AI models will deliberate on your question.
               </p>
               <div className="mt-3 flex flex-wrap justify-center gap-1.5">
-                {COUNCIL_MODELS.map((model) => (
+                {selectedCouncilModels.map((model) => (
                   <Badge key={model.id} variant="outline" className="text-xs px-2 py-0.5">
                     <Sparkles className="mr-1 h-3 w-3" />
                     {model.name}
@@ -184,7 +187,8 @@ export function CouncilContent({
                 synthesize the final answer.
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              <ModelSelector disabled={isProcessing} />
               <PromptInput
                 onSubmit={handleSubmit}
                 accept="image/*,.pdf,.txt,.md,.json,.csv"
@@ -296,7 +300,7 @@ export function CouncilContent({
                     </span>
                     {/* Model Progress Dots */}
                     <div className="mt-1 flex gap-1">
-                      {COUNCIL_MODELS.map((model) => {
+                      {selectedCouncilModels.map((model) => {
                         const status = modelStatuses[1]?.[model.id]?.status
                         return (
                           <div
@@ -348,7 +352,7 @@ export function CouncilContent({
                     </span>
                     {/* Model Progress Dots */}
                     <div className="mt-1 flex gap-1">
-                      {COUNCIL_MODELS.map((model) => {
+                      {selectedCouncilModels.map((model) => {
                         const status = modelStatuses[2]?.[model.id]?.status
                         return (
                           <div
@@ -401,7 +405,7 @@ export function CouncilContent({
                     {/* Chairman Progress Dot */}
                     <div className="mt-1 flex gap-1">
                       <div
-                        title={CHAIRMAN_MODEL.name}
+                        title={selectedChairman.name}
                         className={cn(
                           "h-2 w-2 rounded-full transition-all duration-300",
                           stageStatuses[3] === "complete"
@@ -423,11 +427,11 @@ export function CouncilContent({
                     <span>Chairman is synthesizing the final answer...</span>
                   ) : stageStatuses[2] === "started" ? (
                     <span>
-                      Models evaluating responses ({Object.values(modelStatuses[2] || {}).filter(s => s.status === "complete").length}/{COUNCIL_MODELS.length})
+                      Models evaluating responses ({Object.values(modelStatuses[2] || {}).filter(s => s.status === "complete").length}/{selectedCouncilModels.length})
                     </span>
                   ) : stageStatuses[1] === "started" ? (
                     <span>
-                      Generating responses ({Object.values(modelStatuses[1] || {}).filter(s => s.status === "complete").length}/{COUNCIL_MODELS.length})
+                      Generating responses ({Object.values(modelStatuses[1] || {}).filter(s => s.status === "complete").length}/{selectedCouncilModels.length})
                     </span>
                   ) : (
                     <span>Starting deliberation...</span>
@@ -482,7 +486,7 @@ export function CouncilContent({
                         .filter(([, status]) => status.content || status.status === "generating")
                         .map(([modelId, status]) => ({
                           modelId,
-                          modelName: COUNCIL_MODELS.find((m) => m.id === modelId)?.name || modelId,
+                          modelName: MODELS.find((m) => m.id === modelId)?.name || modelId,
                           content: status.content || "",
                           label: stage1Data.find((r) => r.modelId === modelId)?.label || "",
                           status: status.status,
@@ -613,7 +617,7 @@ export function CouncilContent({
                         .filter(([, status]) => status.evaluation || status.status === "evaluating")
                         .map(([modelId, status]) => ({
                           modelId,
-                          modelName: COUNCIL_MODELS.find((m) => m.id === modelId)?.name || modelId,
+                          modelName: MODELS.find((m) => m.id === modelId)?.name || modelId,
                           evaluation: status.evaluation || "",
                           parsedRanking: status.parsedRanking || [],
                           status: status.status,
@@ -732,10 +736,10 @@ export function CouncilContent({
                   <CardContent>
                     {(() => {
                       // Get streaming synthesis content
-                      const streamingSynthesis = modelStatuses[3]?.[CHAIRMAN_MODEL_ID]?.synthesis
+                      const streamingSynthesis = modelStatuses[3]?.[selectedChairmanId]?.synthesis
                       const synthesis = stage3Data?.synthesis || streamingSynthesis
                       const chairmanStatus =
-                        modelStatuses[3]?.[CHAIRMAN_MODEL_ID]?.status || "synthesizing"
+                        modelStatuses[3]?.[selectedChairmanId]?.status || "synthesizing"
 
                       if (synthesis) {
                         return (

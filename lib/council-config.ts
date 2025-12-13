@@ -1,5 +1,5 @@
 // Council configuration
-// Models that will participate in the council deliberation
+// Models that can participate in council deliberation and/or act as chairman
 
 export interface CouncilModel {
   id: string
@@ -8,13 +8,19 @@ export interface CouncilModel {
   model: string
 }
 
-// Council members - models that respond to user queries
-export const COUNCIL_MODELS: CouncilModel[] = [
+// All available models - can be used as council members or chairman
+export const MODELS: CouncilModel[] = [
   {
-    id: "gpt-5.1",
-    name: "GPT 5.1",
+    id: "gpt-5.2",
+    name: "GPT 5.2",
     provider: "openai",
-    model: "gpt-5.1",
+    model: "gpt-5.2",
+  },
+  {
+    id: "claude-opus",
+    name: "Claude Opus 4.5",
+    provider: "anthropic",
+    model: "claude-opus-4.5"
   },
   {
     id: "claude-sonnet",
@@ -23,7 +29,7 @@ export const COUNCIL_MODELS: CouncilModel[] = [
     model: "claude-sonnet-4.5"
   },
   {
-    id: "gemini-pro",
+    id: "gemini-3-pro",
     name: "Gemini 3 Pro",
     provider: "google",
     model: "gemini-3-pro-preview",
@@ -36,13 +42,11 @@ export const COUNCIL_MODELS: CouncilModel[] = [
   },
 ]
 
-// Chairman model - synthesizes the final answer
-export const CHAIRMAN_MODEL: CouncilModel = {
-  id: "gemini-chairman",
-  name: "Gemini (Chairman)",
-  provider: "google",
-  model: "gemini-3-pro-preview",
-}
+// Default chairman model ID (must exist in MODELS)
+export const DEFAULT_CHAIRMAN_ID = "gemini-pro"
+
+// Helper to get default chairman model object
+export const DEFAULT_CHAIRMAN = MODELS.find(m => m.id === DEFAULT_CHAIRMAN_ID)!
 
 // Generate anonymous labels for responses (A, B, C, etc.)
 export function generateLabel(index: number): string {
