@@ -42,6 +42,7 @@ import { CopyButton } from "@/components/shared/copy-button"
 import { MODELS } from "@/lib/council-config"
 import { ModelSelector } from "@/components/council/model-selector"
 import { useModelSelection } from "@/hooks/use-model-selection"
+import { ProgressMiniAnimated } from "@/components/council/progress-variants"
 import type { ConversationState, ModelStatus } from "@/lib/types"
 
 // Example questions for the empty state
@@ -271,174 +272,14 @@ export function CouncilContent({
             </Card>
           )}
 
-          {/* Progress Stepper */}
+          {/* Progress Indicator */}
           {(isProcessing || currentStage > 0) && (
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  {/* Stage 1 */}
-                  <div className="flex flex-1 flex-col items-center">
-                    <div
-                      className={cn(
-                        "flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-300",
-                        stageStatuses[1] === "complete"
-                          ? "border-green-500 bg-green-50 text-green-600 dark:bg-green-950/30"
-                          : stageStatuses[1] === "started"
-                            ? "border-primary bg-primary/10 text-primary animate-pulse"
-                            : "border-muted-foreground/30 bg-muted/50 text-muted-foreground"
-                      )}
-                    >
-                      <Sparkles className="h-6 w-6" />
-                    </div>
-                    <span
-                      className={cn(
-                        "mt-2 text-xs font-medium",
-                        stageStatuses[1] !== "idle" ? "text-foreground" : "text-muted-foreground"
-                      )}
-                    >
-                      Responses
-                    </span>
-                    {/* Model Progress Dots */}
-                    <div className="mt-1 flex gap-1">
-                      {selectedCouncilModels.map((model) => {
-                        const status = modelStatuses[1]?.[model.id]?.status
-                        return (
-                          <div
-                            key={model.id}
-                            title={model.name}
-                            className={cn(
-                              "h-2 w-2 rounded-full transition-all duration-300",
-                              status === "complete"
-                                ? "bg-green-500"
-                                : status === "generating"
-                                  ? "bg-blue-500 animate-pulse"
-                                  : "bg-muted-foreground/30"
-                            )}
-                          />
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Connector 1-2 */}
-                  <div
-                    className={cn(
-                      "h-0.5 flex-1 mx-2 transition-all duration-500",
-                      stageStatuses[1] === "complete" ? "bg-green-500" : "bg-muted-foreground/30"
-                    )}
-                  />
-
-                  {/* Stage 2 */}
-                  <div className="flex flex-1 flex-col items-center">
-                    <div
-                      className={cn(
-                        "flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-300",
-                        stageStatuses[2] === "complete"
-                          ? "border-green-500 bg-green-50 text-green-600 dark:bg-green-950/30"
-                          : stageStatuses[2] === "started"
-                            ? "border-primary bg-primary/10 text-primary animate-pulse"
-                            : "border-muted-foreground/30 bg-muted/50 text-muted-foreground"
-                      )}
-                    >
-                      <Scale className="h-6 w-6" />
-                    </div>
-                    <span
-                      className={cn(
-                        "mt-2 text-xs font-medium",
-                        stageStatuses[2] !== "idle" ? "text-foreground" : "text-muted-foreground"
-                      )}
-                    >
-                      Evaluation
-                    </span>
-                    {/* Model Progress Dots */}
-                    <div className="mt-1 flex gap-1">
-                      {selectedCouncilModels.map((model) => {
-                        const status = modelStatuses[2]?.[model.id]?.status
-                        return (
-                          <div
-                            key={model.id}
-                            title={model.name}
-                            className={cn(
-                              "h-2 w-2 rounded-full transition-all duration-300",
-                              status === "complete"
-                                ? "bg-green-500"
-                                : status === "evaluating"
-                                  ? "bg-blue-500 animate-pulse"
-                                  : "bg-muted-foreground/30"
-                            )}
-                          />
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Connector 2-3 */}
-                  <div
-                    className={cn(
-                      "h-0.5 flex-1 mx-2 transition-all duration-500",
-                      stageStatuses[2] === "complete" ? "bg-green-500" : "bg-muted-foreground/30"
-                    )}
-                  />
-
-                  {/* Stage 3 */}
-                  <div className="flex flex-1 flex-col items-center">
-                    <div
-                      className={cn(
-                        "flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-300",
-                        stageStatuses[3] === "complete"
-                          ? "border-green-500 bg-green-50 text-green-600 dark:bg-green-950/30"
-                          : stageStatuses[3] === "started"
-                            ? "border-yellow-500 bg-yellow-500/10 text-yellow-600 animate-pulse"
-                            : "border-muted-foreground/30 bg-muted/50 text-muted-foreground"
-                      )}
-                    >
-                      <Crown className="h-6 w-6" />
-                    </div>
-                    <span
-                      className={cn(
-                        "mt-2 text-xs font-medium",
-                        stageStatuses[3] !== "idle" ? "text-foreground" : "text-muted-foreground"
-                      )}
-                    >
-                      Synthesis
-                    </span>
-                    {/* Chairman Progress Dot */}
-                    <div className="mt-1 flex gap-1">
-                      <div
-                        title={selectedChairman.name}
-                        className={cn(
-                          "h-2 w-2 rounded-full transition-all duration-300",
-                          stageStatuses[3] === "complete"
-                            ? "bg-green-500"
-                            : stageStatuses[3] === "started"
-                              ? "bg-yellow-500 animate-pulse"
-                              : "bg-muted-foreground/30"
-                        )}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Status Text */}
-                <div className="mt-4 text-center text-sm text-muted-foreground">
-                  {stageStatuses[3] === "complete" ? (
-                    <span className="text-green-600 font-medium">Deliberation complete</span>
-                  ) : stageStatuses[3] === "started" ? (
-                    <span>Chairman is synthesizing the final answer...</span>
-                  ) : stageStatuses[2] === "started" ? (
-                    <span>
-                      Models evaluating responses ({Object.values(modelStatuses[2] || {}).filter(s => s.status === "complete").length}/{selectedCouncilModels.length})
-                    </span>
-                  ) : stageStatuses[1] === "started" ? (
-                    <span>
-                      Generating responses ({Object.values(modelStatuses[1] || {}).filter(s => s.status === "complete").length}/{selectedCouncilModels.length})
-                    </span>
-                  ) : (
-                    <span>Starting deliberation...</span>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            <ProgressMiniAnimated
+              stageStatuses={stageStatuses}
+              modelStatuses={modelStatuses}
+              selectedCouncilModels={selectedCouncilModels}
+              selectedChairman={selectedChairman}
+            />
           )}
 
           {/* Error Display */}
